@@ -21,7 +21,7 @@ namespace OneWayTicketsMod
     {
         public const string Guid = "onewaytickets.resedit";
         public const string PluginName = "再再启程 资源编辑";
-        public const string Version = "0.2.3";
+        public const string Version = "0.2.4";
 
         internal static Plugin Instance { get; private set; }
 
@@ -34,6 +34,7 @@ namespace OneWayTicketsMod
         internal static ConfigEntry<float> PanelScale;
         internal static ConfigEntry<int> MaxValue;
         internal static ConfigEntry<bool> RestCharacterEnabled;
+        internal static ConfigEntry<bool> UnlockFrontLimit;
         internal static ConfigEntry<bool> NoComa;
         internal static ConfigEntry<bool> DeviceImmune;
         internal static ConfigEntry<bool> UseSystemFont;
@@ -61,6 +62,12 @@ namespace OneWayTicketsMod
             RestCharacterEnabled = Config.Bind("功能", "休息区旅人也能上工位", false,
                 "开启后，休息区（后备队）的旅人也能上工位：安排工位时会先把人换到前排「操作中」，前排满 6 人则自动换下一个空闲的人。改动立即生效，不用重启。");
 
+            UnlockFrontLimit = Config.Bind("功能", "解除操作中人数上限", true,
+                "游戏把「操作中」写死成 6 人（CharacterMgr.AddCharacter / TakeCharacterToFront 都判 characters.Count < 6）。"
+                + "开启后直接绕开这道判定，整支队伍（最多 12 人）都能待在操作中，"
+                + "于是游戏自己的「点人头像 → 点工位」流程对所有人都生效，不依赖补丁。"
+                + "读档 / 换局后会自动重新拉满；手动点「换下」的人会留在休息区。改动立即生效，不用重启。");
+
             NoComa = Config.Bind("功能", "旅人不会晕车", false,
                 "开启后给每个旅人补一份「油门焊死」词缀（免疫冲击昏迷），车辆颠簸、设备受击的震动都不再让旅人晕倒。改动立即生效，不用重启。");
 
@@ -70,6 +77,7 @@ namespace OneWayTicketsMod
             PanelTheme.Log = msg => Logger.LogInfo(msg);
             PanelTheme.UseSystemFont = UseSystemFont.Value;
             TeamService.RestToFrontEnabled = RestCharacterEnabled.Value;
+            TeamService.UnlockFrontLimit = UnlockFrontLimit.Value;
             CharacterGuardService.SetEnabled(NoComa.Value);
             DeviceGuardService.SetEnabled(DeviceImmune.Value);
 
@@ -77,6 +85,12 @@ namespace OneWayTicketsMod
             {
                 TeamService.RestToFrontEnabled = RestCharacterEnabled.Value;
                 Logger.LogInfo($"休息区旅人可上工位：{(RestCharacterEnabled.Value ? "已开启" : "已关闭")}");
+            };
+
+            UnlockFrontLimit.SettingChanged += (_, __) =>
+            {
+                TeamService.UnlockFrontLimit = UnlockFrontLimit.Value;
+                Logger.LogInfo($"解除操作中人数上限：{(UnlockFrontLimit.Value ? "已开启" : "已关闭")}");
             };
 
             NoComa.SettingChanged += (_, __) =>
@@ -148,6 +162,8 @@ namespace OneWayTicketsMod
                 CharacterGuardService.Tick();
                 DeviceGuardService.Tick();
                 CampCoinService.Tick();
+                // 解除操作中人数上限后，读档 / 招募 / 换局都要把休息区的人自动拉回操作中
+                TeamService.Tick();
                 UiInputGuard.Sync(_host.Panel != null && _host.Panel.Visible, ClickGuard.Value);
             };
         }

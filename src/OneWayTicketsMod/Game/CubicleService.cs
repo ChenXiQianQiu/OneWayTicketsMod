@@ -68,6 +68,36 @@ namespace OneWayTicketsMod.Game
         }
 
         /// <summary>
+        /// 工位列表里的完整标签：带上设备名，方便和游戏里的设备对上号
+        /// （游戏里同一台设备可能有 2~3 个工位，光看「工位 1」分不清是哪台）。
+        /// </summary>
+        public static string LabelOf(BasicCubicle bc)
+        {
+            string cub = NameOf(bc);
+            string dev = DeviceNameOf(bc);
+            return string.IsNullOrEmpty(dev) ? cub : $"{dev} · {cub}";
+        }
+
+        private static string DeviceNameOf(BasicCubicle bc)
+        {
+            try
+            {
+                if (!(bc is DeviceCubicle deviceCubicle)) return null;
+                var desc = deviceCubicle.device?.desc;
+                if (desc == null) return null;
+
+                var text = Localization_Utility.get_localization(desc.name);
+                if (!string.IsNullOrEmpty(text)) text = TagRegex.Replace(text, string.Empty).Trim();
+                if (string.IsNullOrEmpty(text)) text = desc.name;
+                return string.IsNullOrEmpty(text) ? null : text;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
         /// 把旅人安排到工位。休息区的人会先被换到前排（操作中），再上工位。
         /// </summary>
         public static bool Assign(Character c, BasicCubicle bc, out string message)
@@ -97,9 +127,11 @@ namespace OneWayTicketsMod.Game
             string frontNote = null;
             if (!TeamService.IsInFront(c))
             {
-                if (!TeamService.RestToFrontEnabled)
+                // v0.2.4：解除操作中人数上限后，不再要求先打开「休息区旅人也能上工位」，
+                // 因为「全员在操作中」本身就是那个开关想要的效果。
+                if (!TeamService.RestToFrontEnabled && !TeamService.UnlockFrontLimit)
                 {
-                    message = "这个旅人在休息区。先打开「休息区旅人也能上工位」开关，或在列表里点「上阵」。";
+                    message = "这个旅人在休息区。先打开「休息区旅人也能上工位」或「解除操作中人数上限」，或在列表里点「上阵」。";
                     return false;
                 }
 
@@ -159,6 +191,75 @@ namespace OneWayTicketsMod.Game
                 message = "撤下失败：" + ex.Message;
                 return false;
             }
+        }
+
+        /// <summary>
+        /// 一键上工：把所有空工位填满。
+        /// 候选人是「操作中」里状态正常、没在岗、没占工位、并且 CanWork 这台设备的人；
+        /// 每人最多安排一次，找不到合适的人就把这个工位空着。
+        /// 用的是和 Assign 一样的落地流程（set_worker / SetCharacterWorking / EnterCubicle）。
+        /// </summary>
+        public static int AutoAssignAll(out string message)
+        {
+            message = null;
+
+            var mgr = TeamService.Mgr;
+            if (mgr?.characters == null) { message = "读不到旅人管理器（当前不在探索场景）。"; return 0; }
+
+            var cubicles = All();
+            if (cubicles.Count == 0) { message = "当前场景没有可分配的工位。"; return 0; }
+
+            // 已经在岗 / 已经占着工位的人不再参与分配
+            var used = new HashSet<Character>();
+            foreach (var c in mgr.characters)
+            {
+                if (c == null) continue;
+                if (c.is_working || Cubicle_Helper.GetCubicle(c) != null) used.Add(c);
+            }
+
+            int assigned = 0;
+            foreach (var bc in cubicles)
+            {
+                if (bc == null || bc.worker != null) continue;
+
+                var target = PickWorker(mgr, bc, used);
+                if (target == null) continue;
+
+                try
+                {
+                    Cubicle_Helper.EmptyCubicle(bc);
+                    Cubicle_Helper.character_cubicle[target] = bc;
+                    bc.set_worker(target);
+                    mgr.SetCharacterWorking(target, true);
+                    target.EnterCubicle(bc);
+                    used.Add(target);
+                    assigned++;
+                }
+                catch (System.Exception ex)
+                {
+                    Plugin.LogWarn($"自动安排 {LabelOf(bc)} 失败：{ex.Message}");
+                }
+            }
+
+            message = assigned > 0
+                ? $"已自动安排 {assigned} 个工位"
+                : "没有可以安排的组合（操作中的人要么在岗、要么不能操作这些设备）。";
+            return assigned;
+        }
+
+        /// <summary>挑一个能操作这个工位的人：状态正常、没被用过、CanWork 通过。</summary>
+        private static Character PickWorker(CharacterMgr mgr, BasicCubicle bc, HashSet<Character> used)
+        {
+            var device = (bc as DeviceCubicle)?.device;
+
+            foreach (var c in mgr.characters)
+            {
+                if (c == null || used.Contains(c)) continue;
+                if (c.state != null) continue;
+                if (device != null && !c.CanWork(device)) continue;
+                return c;
+            }
+            return null;
         }
 
         private static bool IsTeamMember(Character c)
