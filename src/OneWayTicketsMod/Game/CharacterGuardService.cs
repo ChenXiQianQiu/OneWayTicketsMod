@@ -12,29 +12,27 @@
 //     后面按 desc.coma_g 阈值判定，超了就 state = new Coma(...)。
 //     整个游戏里只有这一处会 new Coma（已全量 grep 确认）。
 //   · Decompiled/World/World.Characters.CharacterProperties/CP_Reckless_Driving.cs:16-20
-//     「油门焊死」词缀的 EnterTeam() 就是 owner.isImmuneToStun = true
-//     （顺带 wheel_tractive_force_role += wheel_tf，这是词缀本身的增益）。
+//     「油门焊死」词缀的 EnterTeam() 除了置 isImmuneToStun = true，
+//     还会 wheel_tractive_force_role += wheel_tf。
 //
-// 为什么 v0.2.1 改成「加词缀」而不是拦方法：
-//   v0.2.0 用 Harmony 前置补丁跳过 ApplyShockForce，实测无效。
-//   ApplyShockForce 是从 CharacterMgr.tick 的循环里直接调用的，
-//   Mono 的 JIT 会把它内联进 tick，补丁只改到方法入口，内联后的调用点看不到补丁。
-//   改数据（isImmuneToStun）不经过调用点，不受内联影响，所以稳定生效。
-//
-// 实现：
-//   · 开关打开 → 给每个旅人补一份「油门焊死」词缀（已有就不重复加），
-//     Init / Start / EnterTeam 走一遍，于是 isImmuneToStun = true；
-//   · 开关关闭 → 只移除本 Mod 加的那份并 ExitTeam 还原，
-//     旅人自己本来就有的词缀不动；
-//   · 0.5 秒轮询兜底：新入队、换人、读档后自动补齐，玩家不用重新开关。
+// 为什么 v0.2.3 起不再「补词缀」，改成纯轮询置 isImmuneToStun：
+//   v0.2.1/v0.2.2 的做法是给每个旅人塞一份「油门焊死」词缀，好处是能进存档。
+//   但这个词缀的 EnterTeam() 里除了免疫，还会加牵引力
+//   （CP_Reckless_Driving.cs:16-20）。
+//   一旦同一个人身上挂了两份（存档里已有一份 + 进场景后又补一份），
+//   牵引力就会翻倍；词缀越多车越猛，车速被推到极高之后
+//   CaravanMover_Run.do 里的 `caravan_pos += velocity/120` 会把车送出地图，
+//   相机跟着 caravan_pos 走（LensMgr.calc_camera_pos 直接读 caravan_pos.x），
+//   表现就是「UI 还在、画面全黑」。
+//   现在改成每 0.5 秒直接把 isImmuneToStun 置 true：
+//   不写存档、不加牵引力、不碰任何游戏数据，效果完全一样（ApplyShockForce 第一行就 return）。
+//   顺带做一次「重复词缀清理」：发现同一人身上有多份「油门焊死」就只留一份，
+//   把历史版本可能留下的重复数据修掉。
 // =============================================================================
 
-using System;
 using System.Collections.Generic;
-using AutoCodes;
 using UnityEngine;
 using World.Characters;
-using World.Characters.CharacterProperties;
 using World.Characters.CharacterStates;
 
 namespace OneWayTicketsMod.Game
@@ -44,31 +42,36 @@ namespace OneWayTicketsMod.Game
         /// <summary>「旅人不会晕车」总开关。</summary>
         public static bool NoComaEnabled;
 
-        /// <summary>「油门焊死」词缀在 properties 表里的 id（运行时解析，找不到就跳过）。</summary>
+        /// <summary>「油门焊死」词缀的脚本名，用来识别/清理重复数据。</summary>
         private const string ImmunePropertyScript = "CP_Reckless_Driving";
 
-        /// <summary>本 Mod 亲手加进去的词缀归属者，关闭开关时只回收这些。</summary>
-        private static readonly HashSet<Character> Injected = new HashSet<Character>();
-
-        /// <summary>上次同步时看到的 CharacterMgr，换局（引用变化）时用来清理旧引用。</summary>
+        /// <summary>上次同步时看到的 CharacterMgr，换局（引用变化）时重置去重检查。</summary>
         private static CharacterMgr _lastMgr;
 
-        private static uint _propertyId;
-        private static bool _resolveTried;
-        private static string _resolveNote = "尚未开始解析";
+        /// <summary>换局后是否已经做过一次重复词缀清理。</summary>
+        private static bool _dupChecked;
+
+        /// <summary>已经报告过重复词缀的旅人，避免刷屏。</summary>
+        private static readonly HashSet<uint> ReportedDup = new HashSet<uint>();
+
+        /// <summary>本 Mod 清理掉的重复词缀数量（面板显示用）。</summary>
+        public static int TrimmedCount { get; private set; }
+
         private static float _nextSync;
 
         /// <summary>面板上显示的一行诊断，方便排查「开关开了但没生效」。</summary>
         public static string Diagnose()
         {
-            if (_propertyId == 0)
-                return $"词缀未就绪（{_resolveNote}），暂用直接置位兜底";
-
-            int have = 0;
+            int total = 0, hasProperty = 0;
             foreach (var c in All())
-                if (c != null && FindProperty(c) != null) have++;
+            {
+                if (c == null) continue;
+                total++;
+                if (CountProperty(c) > 0) hasProperty++;
+            }
 
-            return $"id={_propertyId}，队伍里 {have} 人已有，本次新补 {Injected.Count} 人";
+            string extra = TrimmedCount > 0 ? $"，已清理重复词缀 {TrimmedCount} 份" : string.Empty;
+            return $"免疫位每 0.5 秒置位：队伍 {total} 人，自带「油门焊死」{hasProperty} 人{extra}";
         }
 
         /// <summary>前排 + 休息区的全部旅人。可能含 null 项。</summary>
@@ -133,156 +136,76 @@ namespace OneWayTicketsMod.Game
         private static void Sync()
         {
             var mgr = TeamService.Mgr;
+            if (mgr == null) return;
 
             if (!ReferenceEquals(mgr, _lastMgr))
             {
-                // 换局 / 重读存档：旧 Character 对象已经废弃，
-                // 再去调它的 ExitTeam 会往新一局的 BattleContext 上减牵引力，所以只清引用。
-                Injected.Clear();
+                // 换局 / 重读存档：旧 Character 对象已经废弃，只清引用
                 _lastMgr = mgr;
+                _dupChecked = false;
+                ReportedDup.Clear();
             }
 
-            if (!NoComaEnabled)
+            foreach (var c in All())
             {
-                if (Injected.Count == 0) return;
-                foreach (var c in new List<Character>(Injected)) RemoveProperty(c);
-                Injected.Clear();
+                if (c == null) continue;
 
-                // 没赶上补词缀、只被临时打开免疫位的旅人也一并还原。
-                // 游戏里只有「油门焊死」会把 isImmuneToStun 置 true（全量 grep 确认），
-                // 所以没这个词缀的人设回 false 是安全的。
-                foreach (var c in All())
-                {
-                    if (c == null || FindProperty(c) != null) continue;
-                    c.isImmuneToStun = false;
-                }
-                return;
+                // 重复词缀只在换局后查一次（属性表不会自己长出第二份）
+                if (!_dupChecked) TrimDuplicateProperty(c);
+
+                // 身上自带「油门焊死」的人，免疫位本来就该是开的，
+                // 关开关时不要把它关掉（那是游戏自己给的）。
+                c.isImmuneToStun = NoComaEnabled || CountProperty(c) > 0;
             }
 
-            if (mgr == null) return;
-
-            if (!ResolvePropertyId())
-            {
-                // properties 表还没就绪（局外 / 刚进场景）：
-                // 先直接把免疫位打开保证功能可用，等表就绪了下一轮再补真词缀。
-                foreach (var c in All())
-                    if (c != null) c.isImmuneToStun = true;
-                return;
-            }
-
-            foreach (var c in All()) EnsureProperty(c);
+            _dupChecked = true;
         }
 
-        /// <summary>
-        /// 在 properties 表里找「油门焊死」。表是运行时从 Excel 资源加载的，
-        /// 局外可能还没就绪，所以失败时不置 _resolveTried，下一轮再试。
-        /// </summary>
-        private static bool ResolvePropertyId()
-        {
-            if (_resolveTried) return _propertyId != 0;
-            _resolveTried = true;
-
-            try
-            {
-                var records = propertiess.records;
-                if (records == null)
-                {
-                    _resolveNote = "properties 表返回 null";
-                    _resolveTried = false;
-                    return false;
-                }
-
-                foreach (var pair in records)
-                {
-                    var record = pair.Value;
-                    if (record != null && record.script == ImmunePropertyScript)
-                    {
-                        _propertyId = record.id;
-                        _resolveNote = "ok";
-                        Plugin.LogInfo($"已找到「油门焊死」词缀，id={_propertyId}");
-                        return true;
-                    }
-                }
-
-                _resolveNote = $"表里没有 {ImmunePropertyScript}";
-                Plugin.LogWarn($"properties 表里没有 {ImmunePropertyScript}，改用直接置 isImmuneToStun 的兜底方案");
-            }
-            catch (Exception ex)
-            {
-                _resolveNote = "读表异常：" + ex.Message;
-                _resolveTried = false;
-            }
-
-            return _propertyId != 0;
-        }
-
-        /// <summary>
-        /// 按词缀脚本名找「油门焊死」。
-        /// 这里不比对 id：表还没解析出来时 id 是 0，用脚本名更稳。
-        /// </summary>
-        private static CharacterProperty FindProperty(Character c)
+        /// <summary>数一下这个人身上有几份「油门焊死」。</summary>
+        private static int CountProperty(Character c)
         {
             var list = c?.character_properties;
-            if (list == null) return null;
+            if (list == null) return 0;
 
-            foreach (var property in list)
-                if (property?.desc != null && property.desc.script == ImmunePropertyScript)
-                    return property;
-
-            return null;
+            int n = 0;
+            foreach (var p in list)
+                if (p?.desc != null && p.desc.script == ImmunePropertyScript) n++;
+            return n;
         }
 
-        /// <summary>确保这个人身上有「油门焊死」，并且免疫位是开的。</summary>
-        private static void EnsureProperty(Character c)
+        /// <summary>
+        /// 同一个人身上挂多份「油门焊死」时只保留一份。
+        /// 每份的 EnterTeam 都会加一次 wheel_tractive_force_role，
+        /// 多出来的那份会让牵引力凭空变大，是本 Mod 旧版本可能留下的隐患。
+        /// </summary>
+        private static void TrimDuplicateProperty(Character c)
         {
-            if (c == null) return;
+            var list = c?.character_properties;
+            if (list == null) return;
 
-            var existing = FindProperty(c);
-            if (existing != null)
+            int seen = 0;
+            for (int i = list.Count - 1; i >= 0; i--)
             {
-                // 本来就有（游戏随机给的），只保证免疫位开着，不重复加词缀。
-                c.isImmuneToStun = true;
-                return;
-            }
+                var p = list[i];
+                if (p?.desc == null || p.desc.script != ImmunePropertyScript) continue;
 
-            try
-            {
-                var property = CharacterUtility.GetProperty(c, _propertyId);
-                if (property == null) return;
+                seen++;
+                if (seen == 1) continue; // 留一份
 
-                // 和 Character.Init / CharacterMgr.AddCharacter 的顺序保持一致
-                property.Init();
-                property.Start();
-                c.character_properties.Add(property);
-                property.EnterTeam();
+                try
+                {
+                    p.ExitTeam();
+                    list.RemoveAt(i);
+                    TrimmedCount++;
 
-                // EnterTeam 里就会置 true，这里再写一次是兜底
-                c.isImmuneToStun = true;
-                Injected.Add(c);
-            }
-            catch (Exception ex)
-            {
-                Plugin.LogWarn($"给旅人补「油门焊死」词缀失败：{ex.Message}");
-            }
-        }
-
-        /// <summary>回收本 Mod 加的词缀，并让 EnterTeam 加的牵引力一起还回去。</summary>
-        private static void RemoveProperty(Character c)
-        {
-            if (c == null) return;
-
-            var property = FindProperty(c);
-            if (property == null) return;
-
-            try
-            {
-                property.ExitTeam();
-                c.character_properties.Remove(property);
-                c.isImmuneToStun = false;
-            }
-            catch (Exception ex)
-            {
-                Plugin.LogWarn($"移除「油门焊死」词缀失败：{ex.Message}");
+                    uint id = c.desc?.id ?? 0u;
+                    if (ReportedDup.Add(id))
+                        Plugin.LogWarn($"旅人 {id} 身上有多份「油门焊死」，已移除多余的（避免牵引力叠加把车速顶飞）。");
+                }
+                catch
+                {
+                    // 单个属性移除失败不影响其它
+                }
             }
         }
     }

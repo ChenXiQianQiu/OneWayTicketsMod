@@ -127,10 +127,25 @@ namespace OneWayTicketsMod.Game
                 var field = ImmuField;
                 if (field != null) field.SetValue(d, ImmuTicks);
             }
-            catch
+            catch (Exception ex)
             {
-                // 单台设备出错不影响其它设备
+                // 单台设备出错不影响其它设备，但必须留痕：
+                // Device.EnterSafeArea() 里会对每个 view 调 notify_remove_emergency，
+                // 只要有一个 view 是已销毁的，就会抛 NRE。
+                // 游戏自己的进安全区协程也会调同一个方法（WorldSceneRoot.cs:483-486），
+                // 那边没有 try/catch —— 一旦它抛异常，协程直接终止，黑幕就永远停在 alpha=1。
+                // 所以这里把异常记下来，方便和「进安全区黑屏」对上号。
+                WarnDeviceOnce(d, ex);
             }
+        }
+
+        private static readonly HashSet<string> WarnedDevices = new HashSet<string>();
+
+        private static void WarnDeviceOnce(Device d, Exception ex)
+        {
+            string key = (d?.desc?.name ?? "?") + "|" + ex.GetType().Name + "|" + ex.Message;
+            if (!WarnedDevices.Add(key)) return;
+            Plugin.LogWarn($"设备清理异常（{d?.desc?.name}）：{ex.GetType().Name} {ex.Message}");
         }
 
         /// <summary>关掉开关时把本 Mod 钉的 immue 状态还原成 normal。</summary>

@@ -21,7 +21,7 @@ namespace OneWayTicketsMod
     {
         public const string Guid = "onewaytickets.resedit";
         public const string PluginName = "再再启程 资源编辑";
-        public const string Version = "0.2.2";
+        public const string Version = "0.2.3";
 
         internal static Plugin Instance { get; private set; }
 
@@ -38,6 +38,7 @@ namespace OneWayTicketsMod
         internal static ConfigEntry<bool> DeviceImmune;
         internal static ConfigEntry<bool> UseSystemFont;
         internal static ConfigEntry<bool> ClickGuard;
+        internal static ConfigEntry<bool> ScreenGuard;
 
         private Harmony _harmony;
         private PanelHost _host;
@@ -67,11 +68,15 @@ namespace OneWayTicketsMod
             DeviceImmune = Config.Bind("功能", "设备免疫异常状态", false,
                 "开启后车上设备不会被点燃 / 机械故障 / 腐蚀 / 缠绕 / 打湿。做法是每 0.2 秒把设备钉在游戏的「免疫」状态上（游戏判定异常的第一行就是免疫则跳过）。只免疫异常状态，普通掉血仍然生效。");
 
+            ScreenGuard = Config.Bind("功能", "黑屏守卫", true,
+                "进安全区 / 过场时如果画面一直黑着不恢复，自动把黑幕收掉并解除 ESC 锁定，同时在 BepInEx 日志里记录当时的游戏状态。正常情况下不会触发（过场黑幕只有 0.6 秒左右）。");
+
             PanelTheme.Log = msg => Logger.LogInfo(msg);
             PanelTheme.UseSystemFont = UseSystemFont.Value;
             TeamService.RestToFrontEnabled = RestCharacterEnabled.Value;
             CharacterGuardService.SetEnabled(NoComa.Value);
             DeviceGuardService.SetEnabled(DeviceImmune.Value);
+            ScreenGuardService.Enabled = ScreenGuard.Value;
 
             RestCharacterEnabled.SettingChanged += (_, __) =>
             {
@@ -90,6 +95,12 @@ namespace OneWayTicketsMod
             {
                 DeviceGuardService.SetEnabled(DeviceImmune.Value);
                 Logger.LogInfo($"设备免疫异常状态：{(DeviceImmune.Value ? "已开启" : "已关闭")}");
+            };
+
+            ScreenGuard.SettingChanged += (_, __) =>
+            {
+                ScreenGuardService.Enabled = ScreenGuard.Value;
+                Logger.LogInfo($"黑屏守卫：{(ScreenGuard.Value ? "已开启" : "已关闭")}");
             };
 
             UseSystemFont.SettingChanged += (_, __) =>
@@ -147,6 +158,7 @@ namespace OneWayTicketsMod
                 CaravanSpeedService.Tick();
                 CharacterGuardService.Tick();
                 DeviceGuardService.Tick();
+                ScreenGuardService.Tick();
                 CampCoinService.Tick();
                 UiInputGuard.Sync(_host.Panel != null && _host.Panel.Visible, ClickGuard.Value);
             };
