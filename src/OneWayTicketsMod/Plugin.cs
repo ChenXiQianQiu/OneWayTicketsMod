@@ -21,7 +21,7 @@ namespace OneWayTicketsMod
     {
         public const string Guid = "onewaytickets.resedit";
         public const string PluginName = "再再启程 资源编辑";
-        public const string Version = "0.2.4";
+        public const string Version = "0.2.5";
 
         internal static Plugin Instance { get; private set; }
 
@@ -33,7 +33,6 @@ namespace OneWayTicketsMod
         internal static ConfigEntry<KeyCode> ToggleKey;
         internal static ConfigEntry<float> PanelScale;
         internal static ConfigEntry<int> MaxValue;
-        internal static ConfigEntry<bool> RestCharacterEnabled;
         internal static ConfigEntry<bool> UnlockFrontLimit;
         internal static ConfigEntry<bool> NoComa;
         internal static ConfigEntry<bool> DeviceImmune;
@@ -59,9 +58,6 @@ namespace OneWayTicketsMod
             MaxValue = Config.Bind("通用", "一键满资源的目标值", 999999,
                 new ConfigDescription("「一键满资源」和「满」按钮写入的数值", new AcceptableValueRange<int>(1, 999999999)));
 
-            RestCharacterEnabled = Config.Bind("功能", "休息区旅人也能上工位", false,
-                "开启后，休息区（后备队）的旅人也能上工位：安排工位时会先把人换到前排「操作中」，前排满 6 人则自动换下一个空闲的人。改动立即生效，不用重启。");
-
             UnlockFrontLimit = Config.Bind("功能", "解除操作中人数上限", true,
                 "游戏把「操作中」写死成 6 人（CharacterMgr.AddCharacter / TakeCharacterToFront 都判 characters.Count < 6）。"
                 + "开启后直接绕开这道判定，整支队伍（最多 12 人）都能待在操作中，"
@@ -76,16 +72,9 @@ namespace OneWayTicketsMod
 
             PanelTheme.Log = msg => Logger.LogInfo(msg);
             PanelTheme.UseSystemFont = UseSystemFont.Value;
-            TeamService.RestToFrontEnabled = RestCharacterEnabled.Value;
             TeamService.UnlockFrontLimit = UnlockFrontLimit.Value;
             CharacterGuardService.SetEnabled(NoComa.Value);
             DeviceGuardService.SetEnabled(DeviceImmune.Value);
-
-            RestCharacterEnabled.SettingChanged += (_, __) =>
-            {
-                TeamService.RestToFrontEnabled = RestCharacterEnabled.Value;
-                Logger.LogInfo($"休息区旅人可上工位：{(RestCharacterEnabled.Value ? "已开启" : "已关闭")}");
-            };
 
             UnlockFrontLimit.SettingChanged += (_, __) =>
             {
@@ -116,8 +105,7 @@ namespace OneWayTicketsMod
 
             // 逐个补丁类单独挂载：某个补丁点因游戏更新失效时，
             // 只影响它自己，不会连带其它功能一起不可用。
-            PatchAll(typeof(CubicleSetPatch),
-                     typeof(CharacterShockPatch),
+            PatchAll(typeof(CharacterShockPatch),
                      typeof(DeviceOutlierPatch),
                      typeof(CaravanSpeedPatch));
 

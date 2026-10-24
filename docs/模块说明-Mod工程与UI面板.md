@@ -7,18 +7,17 @@
 ├── AGENTS.md                       # 项目约定（必读）
 ├── src/OneWayTicketsMod/           # Mod 工程（本仓库唯一的 Mod）
 │   ├── OneWayTicketsMod.csproj
-│   ├── version.txt                 # 0.2.0，改版本必须同步 Plugin.Version
+│   ├── version.txt                 # 0.2.5，改版本必须同步 Plugin.Version
 │   ├── Plugin.cs                   # BepInEx 入口：配置 + 补丁 + 宿主装配
 │   ├── Game/                       # 业务层（不依赖 UI）
 │   │   ├── SingletonAccess.cs      # 反射读 m_instance，绝不 new
 │   │   ├── CampCoinService.cs      # 营地币读写 + HUD 刷新
 │   │   ├── WorldService.cs         # 局内金币 / 车辆耐久 / 无限耐久
 │   │   ├── CaravanSpeedService.cs  # 车速读取 / 直接设置 / 锁定
-│   │   ├── TeamService.cs          # 旅人列表 + 休息区开关
+│   │   ├── TeamService.cs          # 旅人列表 + 解除操作中人数上限
 │   │   ├── CharacterGuardService.cs# 旅人不会晕车 + 全部唤醒
 │   │   └── DeviceGuardService.cs   # 设备免疫异常 + 清除异常 + 设备列表
-│   ├── Patches/                    # 一个补丁只解决一件事
-│   │   ├── CharacterHelperPatch.cs # 休息区旅人可上工位（GetAllCharacters 后置）
+│   ├── Patches/                    # 一个补丁只解决一件事（本作不执行，见旅人模块说明第 3 节）
 │   │   ├── CharacterShockPatch.cs  # 旅人不会晕车（ApplyShockForce 前置）
 │   │   ├── DeviceOutlierPatch.cs   # 设备免疫异常（applied_outlier 前置，TargetMethod 反射）
 │   │   └── CaravanSpeedPatch.cs    # 锁定车速（CaravanMover.move 后置）
@@ -31,13 +30,14 @@
 │       ├── MainPanel.cs            # 面板外壳 + 概览页
 │       ├── TabCamp.cs              # 营地资源页
 │       ├── TabWorld.cs             # 局内页（金币 / 耐久 / 车速）
-│       ├── TabTeam.cs              # 旅人页（不晕车 / 休息区上工位 / 列表）
+│       ├── TabTeam.cs              # 旅人页（不晕车 / 解除操作中上限 / 列表）
 │       ├── TabDevice.cs            # 设备页（免疫异常 / 设备列表）
 │       └── TabSettings.cs          # 设置页
 ├── docs/                           # 反编译索引 + 各模块说明
 ├── share/Mod修改内容说明.md         # 面向玩家/分享包的功能说明（必须手动维护）
 ├── _work/                          # CE 时代的生成脚本与离线测试 + 验证用小工具
 │   └── screen_tool.py              # 截图 / SendInput 点击，纯 ctypes，不依赖 Pillow
+│   └── winrect.py                  # 枚举窗口矩形 / 把游戏窗口切到前台
 ├── 再再启程 资源编辑表.CT          # CE 表（已被本 Mod 取代，留档）
 └── Decompiled/                     # 反编译产物，不提交
 ```

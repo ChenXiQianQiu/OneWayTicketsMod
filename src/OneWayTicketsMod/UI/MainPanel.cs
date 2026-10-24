@@ -8,7 +8,6 @@
 using System.Collections.Generic;
 using OneWayTicketsMod.Game;
 using UnityEngine;
-using World.Characters;
 using static OneWayTicketsMod.UI.PanelWidgets;
 
 namespace OneWayTicketsMod.UI
@@ -43,10 +42,6 @@ namespace OneWayTicketsMod.UI
         private Vector2 _coinScroll;
         private Vector2 _teamScroll;
         private Vector2 _deviceScroll;
-        private Vector2 _cubicleScroll;
-
-        /// <summary>「工位分配」里当前选中的旅人（点旅人列表的「选」按钮设置）。</summary>
-        private Character _assignTarget;
 
         /// <summary>把所有输入框恢复成游戏当前值。</summary>
         private void ResetBuffers()

@@ -17,12 +17,11 @@
 //   · CharacterMgrView.cs:83 notify_add_character：
 //     找不到空槽就 Instantiate 一个新的 CharacterView，所以头像数量本身没有上限。
 //
-// 关于「休息区旅人也能上工位」（v0.2.2 换实现）：
-//   工位分配入口 Cubicle_Helper.SetCubicle 会先用 Character_Helper.GetAllCharacters()
-//   判断这个人是不是自己人，而 GetAllCharacters 只返回 characters（前排）。
-//   所以后备队旅人点了工位也没反应；v0.2.1 那种「绕开判定直接 set_worker」的做法
-//   实测在游戏里看不到效果（人不在前排，设备不认他、UI 也不更新）。
-//   现在改成**真的把人换到前排**。
+// 关于「休息区旅人也能上工位」：
+//   v0.2.2 曾经做过「先换到前排再上工位」，v0.2.5 连开关带卡片一起删掉了
+//   （用户实测完全没效果）。替代方案就是下面的「解除操作中人数上限」：
+//   全员都在 characters 里，游戏自己的点选流程对所有人都成立。
+//   所以本类现在只剩两件事：换人（上阵 / 换下）和解除上限。
 //
 // v0.2.4「解除操作中人数上限」：
 //   用户实测反馈「游戏里点人 → 点工位」对休息区旅人依旧没反应，
@@ -52,9 +51,6 @@ namespace OneWayTicketsMod.Game
 
     internal static class TeamService
     {
-        /// <summary>「休息区旅人可上工位」总开关。</summary>
-        public static bool RestToFrontEnabled;
-
         /// <summary>「解除操作中人数上限」总开关（v0.2.4）。</summary>
         public static bool UnlockFrontLimit;
 
