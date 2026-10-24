@@ -21,7 +21,7 @@ namespace OneWayTicketsMod
     {
         public const string Guid = "onewaytickets.resedit";
         public const string PluginName = "再再启程 资源编辑";
-        public const string Version = "0.2.7";
+        public const string Version = "0.2.8";
 
         internal static Plugin Instance { get; private set; }
 
@@ -75,7 +75,12 @@ namespace OneWayTicketsMod
                 "开启后给每个旅人补一份「油门焊死」词缀（免疫冲击昏迷），车辆颠簸、设备受击的震动都不再让旅人晕倒。改动立即生效，不用重启。");
 
             DeviceImmune = Config.Bind("功能", "设备免疫异常状态", false,
-                "开启后车上设备不会被点燃 / 机械故障 / 腐蚀 / 缠绕 / 打湿。做法是每 0.2 秒把设备钉在游戏的「免疫」状态上（游戏判定异常的第一行就是免疫则跳过）。只免疫异常状态，普通掉血仍然生效。");
+                "开启后车上设备不会被点燃 / 机械故障 / 腐蚀 / 缠绕 / 打湿。"
+                + "做法是每 0.1 秒检查一次，一发现异常就调游戏自己的清理逻辑（Device.EnterSafeArea）"
+                + "把异常连图标一起清掉，异常最多只存在 0.1 秒。"
+                + "注意：v0.2.7 及更早是把设备钉在游戏的「免疫」状态上，那会让装备面板打开时报空引用，"
+                + "导致该设备的工位格子直接消失、点不了（v0.2.8 已改成上面的清法）。"
+                + "只免疫异常状态，普通掉血仍然生效。");
 
             PanelTheme.Log = msg => Logger.LogInfo(msg);
             PanelTheme.UseSystemFont = UseSystemFont.Value;

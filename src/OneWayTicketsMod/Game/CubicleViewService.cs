@@ -11,6 +11,16 @@
 //
 // 所以 v0.2.7 改成「不再猜，逐层硬修 + 写日志自证」。
 //
+// ⚠ v0.2.8 的补充结论（日志实证）：
+//   用 Dump() 打日志后确认：世界里的 6 台设备、15 个格子 **全部 active=True、全部已绑工位、死格 0**
+//   —— 也就是说 ①②③ 三层本来就没坏，v0.2.6 / v0.2.7 一直在修一个不存在的毛病。
+//   真正坏掉的是「装备面板」那套 UI（EquipSlot.cub_list），它被
+//   DeviceUiView.show_emergency 的 NullReferenceException 掐断在 EquipSlot.set_panel 里，
+//   导致「把工位格子 SetActive(true)」那段永远执行不到。
+//   根因是本 Mod 的「设备免疫异常状态」把 device.state 钉在 immue、而 device_emergency 是 null
+//   —— 详见 Game/DeviceGuardService.cs 顶部注释，v0.2.8 已改为「事后清除」。
+//   本类保留，因为它是 ①②③ 层的保险 + 唯一的诊断入口。
+//
 // 反编译依据（工位格子从「数据」到「能点」要过的四道关）：
 //   1. 数据层 Decompiled/World/World.Devices/Device.cs:429-437 InitData()
 //        if (rc.cubicles != null)
@@ -388,6 +398,40 @@ namespace OneWayTicketsMod.Game
             }
 
             W($"合计：设备 {deviceCount} 台 · 格子 {stationTotal} 个（显示 {stationActive} / 已绑定 {stationBound} / 死格 {deadSlot}）");
+
+            // 装备面板（EquipSlot）是另一套 UI：它不用 DeviceUiView.stations，
+            // 而是用 EquipSlot.cub_list 这一组 CubicleUiView。v0.2.7 之前它会被
+            // show_emergency 的空引用掐断，导致 cub_list 全部停在被关掉的状态。
+            try
+            {
+                var equips = Object.FindObjectsOfType<World.Devices.Equip.EquipSlot>();
+                if (equips == null || equips.Length == 0)
+                {
+                    W("装备面板：未打开");
+                }
+                else
+                {
+                    W($"装备面板：{equips.Length} 个槽位");
+                    foreach (var es in equips)
+                    {
+                        if (es == null || es.cub_list == null) continue;
+                        int b = 0, a = 0;
+                        foreach (var cv in es.cub_list)
+                        {
+                            if (cv == null) continue;
+                            if (cv.owner != null) b++;
+                            if (cv.gameObject.activeSelf) a++;
+                        }
+                        W($"  [{es.gameObject.name}] 工位格={es.cub_list.Count} 已绑定={b} 已显示={a}"
+                          + (es.cub_list.Count > 0 && a == 0 ? "  ← 全被关掉了（init 被异常掐断的特征）" : ""));
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                W("装备面板诊断失败：" + ex.Message);
+            }
+
             W($"已执行修复 {_repairCount} 次");
             W("===== 结束 =====");
 

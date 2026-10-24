@@ -32,17 +32,17 @@ namespace OneWayTicketsMod.UI
             }
 
             int abnormal = DeviceGuardService.AbnormalCount();
-            int immuneCount = DeviceGuardService.ImmuneCount();
+            int cleared = DeviceGuardService.ClearedCount;
 
             GUILayout.BeginHorizontal();
             Caption("异常设备", 60f);
             GUILayout.Label(abnormal > 0 ? $"{abnormal} 台" : "0 台",
                 abnormal > 0 ? PanelTheme.Value : PanelTheme.Sub, GUILayout.Width(56f));
 
-            Caption("免疫中", 50f);
+            Caption("已拦截", 50f);
             Color savedColor = GUI.contentColor;
-            GUI.contentColor = immuneCount > 0 ? PanelTheme.TxtOk : PanelTheme.TxtWeak;
-            GUILayout.Label($"{immuneCount} 台", PanelTheme.Sub, GUILayout.Width(56f));
+            GUI.contentColor = cleared > 0 ? PanelTheme.TxtOk : PanelTheme.TxtWeak;
+            GUILayout.Label($"{cleared} 次", PanelTheme.Sub, GUILayout.Width(56f));
             GUI.contentColor = savedColor;
 
             if (Btn("全部清除", 76f, PanelTheme.Mini, 20f))
@@ -54,9 +54,9 @@ namespace OneWayTicketsMod.UI
             GUILayout.EndHorizontal();
 
             Hint("异常状态指的是设备面板上的燃烧、机械故障、腐蚀、缠绕、潮湿这五种。");
-            Hint("开启后每 0.2 秒把设备钉在游戏的「免疫」状态上——游戏自己判定异常的第一行就是「免疫则跳过」，所以五种异常都进不来。");
-            Hint("「免疫中」就是被钉住的状态，属正常现象；关掉开关会立刻恢复成「正常」。");
-            Hint("进安全区时会自动恢复成「正常」（安全区没有战斗，不需要免疫；而且带着免疫状态进安全区会让游戏的设备商店初始化报错、画面卡黑）。");
+            Hint("开启后每 0.1 秒检查一次，一发现异常立刻清掉（走游戏自己的 EnterSafeArea 清理逻辑，图标会一起消失）。");
+            Hint("为什么不是「提前钉住」：把设备钉在「免疫」状态会让装备面板打开时报错，");
+            Hint("那台设备的工位格子就再也打不开了（v0.2.8 已修）。现在异常最多只存在 0.1 秒。");
             Hint("只免疫异常，普通掉血仍会掉（要免掉血请开「局内」页的无限耐久）。");
             EndCard();
 

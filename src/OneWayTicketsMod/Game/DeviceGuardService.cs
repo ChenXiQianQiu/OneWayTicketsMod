@@ -7,27 +7,57 @@
 //                       acid(腐蚀) / bind(缠绕) / wet(潮湿)。
 //   · Decompiled/World/World.Devices/Device.cs:795-960
 //     ITarget.applied_outlier（显式接口实现）是这些状态的唯一入口，
-//     outlier_type 为 "fire" / "blunt" / "acid" / "wrap" / "water"，
-//     "sharp" / "flash" 目前是空分支。
-//     ★ 该方法第一行就是 `if (state == DeviceState.immue) return;`
-//       —— 所以只要把 state 钉在 immue，所有异常都进不来。
-//   · Decompiled/World/World.Devices/Device.cs:392-402  CheckEmergency
-//     每 tick 对 immue 状态做 `immu_countdown--`，减到 0 就回 normal，
-//     所以要在轮询里把 immu_countdown 一起续上，否则只免疫 1 tick。
-//   · Decompiled/World/World.Devices/Device.cs:279-290
-//     EnterSafeArea 会把 device_emergency 通知给各 View 移除并把 state 复位成 normal，
-//     正好可以拿来当「一键清除异常」。
+//     outlier_type 为 "fire" / "blunt" / "acid" / "wrap" / "water"。
+//   · Decompiled/World/World.Devices/Device.cs:276-289  EnterSafeArea()
+//       if (device_emergency != null) { 通知各 View 移除异常图标; device_emergency = null; }
+//       state = normal;
+//     —— 这是游戏自己的「清干净」入口，本类就靠它。
 //
-// 为什么是「轮询」而不是 Harmony 前置补丁：
-//   本作的 Harmony 补丁实测完全不执行（详见 docs/模块说明-旅人与工位.md 4.1），
-//   所以 v0.2.2 起改成每 0.2 秒轮询钉状态，不再依赖补丁。
+// ⚠ v0.2.8 重大修正：不再把 state 钉在 immue
 //
-// 说明：本开关只免疫「异常状态」，普通掉血仍然走 Device.Hurt（要免掉血请用无限耐久）。
+//   v0.2.2 ~ v0.2.7 的做法是把 `state` 钉在 `DeviceState.immue`，
+//   因为 applied_outlier 第一行就是 `if (state == immue) return;`。
+//   这在战斗里确实有效，但会**打断装备面板**，导致「设备的工位格子直接消失」：
+//
+//     Decompiled/World/World.Devices.DeviceUiViews/DeviceUiView.cs:67-69
+//         if (owner.state != Device.DeviceState.normal)
+//             show_emergency(owner.device_emergency);
+//     Decompiled/World/World.Devices.DeviceUiViews/DeviceUiView.cs:233
+//         de.init();          ← de 是 null 时直接 NullReferenceException，没有 null 判断
+//
+//   immue 状态下 device_emergency 恒为 null → 必然 NRE。而异常抛在：
+//     EquipmentMgrView.OnEnable → init() → EquipSlot.init() → EquipSlot.set_panel()
+//       → device.add_view(panel_view) → DeviceUiView.attach() → show_emergency(null)  ✗
+//   set_panel() 里 add_view 之后才是「把工位格子打开」的代码：
+//     Decompiled/World/World.Devices.Equip/EquipSlot.cs:169-173
+//         device.cubicle_list[i].add_view(cub_list[i]);
+//         cub_list[i].gameObject.SetActive(value: true);   ← 永远执行不到
+//   而 EquipSlot.init() 开头刚刚把 cub_list 全部 SetActive(false)（同文件 191-194）。
+//   → 装备面板里那台设备的工位格子被关掉后再也打不开，玩家看到的就是
+//     「工位直接消失、点不了」，异常还会继续往上抛，把后面几个槽位的 init 一起废掉。
+//
+//   BepInEx 日志实证（v0.2.7 运行，安全区外打开装备面板）：
+//     NullReferenceException
+//       World.Devices.DeviceUiViews.DeviceUiView.show_emergency
+//       World.Devices.DeviceUiViews.DeviceUiView.attach
+//       Foundations.MVVM.Model`2[T,V].add_view
+//       World.Devices.Equip.EquipSlot.set_panel
+//       World.Devices.Equip.EquipSlot.init
+//       World.Devices.Equip.EquipmentMgrView.OnEnable
+//   同一局里进安全区后（DeviceGuard 会临时撒手）打开装备面板则正常，
+//   工位的视图数从 3 变成 4 —— 正好证明是这一步被 NRE 掐断的。
+//
+// 所以改成「事后清除」而不是「事前钉住」：
+//   每 0.1 秒扫一遍，只要设备有 device_emergency 或 state 不是 normal，
+//   就调 EnterSafeArea() 把它清干净并复位成 normal。
+//   效果上依旧是「设备不会有异常状态」（异常最多存在 0.1 秒），
+//   但 state 永远是 normal，装备面板再也不会 NRE。
+//
+// 代价：异常图标可能闪一下（≤0.1 秒）。比起装备面板直接废掉，这个代价可以接受。
 // =============================================================================
 
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Text;
 using Commons;
 using UnityEngine;
@@ -54,34 +84,17 @@ namespace OneWayTicketsMod.Game
         /// <summary>「设备免疫异常状态」总开关，轮询每次读它。</summary>
         public static bool ImmuneEnabled { get; private set; }
 
-        /// <summary>钉住 immue 时写的倒计时（单位是 tick，120 tick ≈ 1 秒）。</summary>
-        private const int ImmuTicks = 999999;
+        /// <summary>累计清掉的异常次数（面板显示用）。</summary>
+        public static int ClearedCount { get; private set; }
 
-        private static FieldInfo _immuField;
-        private static bool _immuFieldChecked;
+        /// <summary>轮询间隔：越短异常存在的时间越短，但别太密。</summary>
+        private const float Interval = 0.1f;
+
         private static float _nextTick;
 
         public static DeviceMgr Mgr => SingletonAccess.Mgr<DeviceMgr>("DeviceMgr");
 
         public static bool Ready => Mgr != null;
-
-        /// <summary>Device.immu_countdown 是私有字段，反射一次缓存起来。</summary>
-        private static FieldInfo ImmuField
-        {
-            get
-            {
-                if (_immuFieldChecked) return _immuField;
-                _immuFieldChecked = true;
-
-                _immuField = typeof(Device).GetField("immu_countdown",
-                    BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
-
-                if (_immuField == null)
-                    Plugin.LogWarn("设备免疫：找不到 Device.immu_countdown，改为只做逐帧清除（异常会闪一下就消失）");
-
-                return _immuField;
-            }
-        }
 
         // ---------------------------------------------------------------- 开关
 
@@ -93,48 +106,15 @@ namespace OneWayTicketsMod.Game
         }
 
         /// <summary>
-        /// 每帧调用（面板关着也跑）：把车上所有设备的 state 钉在 immue，
-        /// 这样 applied_outlier 第一行就 return，五种异常都进不来。
-        /// 用 0.2 秒节流；immue 状态本身会持续到下一次写入，不会掉。
-        ///
-        /// ★ 安全区里必须撒手（v0.2.3 修的黑屏 bug）：
-        ///   Decompiled/World/World.Devices.DeviceUiViews/DeviceUiView.cs:67-69
-        ///       if (owner.state != Device.DeviceState.normal)
-        ///           show_emergency(owner.device_emergency);
-        ///   而 show_emergency 最后一行是 `de.init();`（同文件 233 行），没有 null 判断。
-        ///   immue 状态下 device_emergency 是 null → 直接 NullReferenceException。
-        ///
-        ///   进安全区的调用链（栈来自 BepInEx 日志）：
-        ///       WorldSceneRoot.IBlackScreenCoroutine
-        ///         → SafeAreaView.Init() → init_shop → init_device
-        ///         → DeviceBusinessPanel.Init → EquipmentMgr.Init
-        ///         → EquipSlot.init → EquipSlot.set_panel → Model.add_view
-        ///         → DeviceUiView.attach → show_emergency(null) → de.init()  ✗ NRE
-        ///   异常穿出协程后，IBlackScreenCoroutine 直接终止，
-        ///   黑幕永远停在 alpha=1、ban_esc 一直是 true —— 表现就是「进安全点黑屏」。
-        ///
-        ///   所以：一检测到 in_safe_area 就立刻把设备还原成 normal（并停止钉），
-        ///   安全区本来也没有战斗，不需要免疫。
+        /// 每帧调用（面板关着也跑）：把车上设备的异常清掉并复位成 normal。
+        /// 注意这里**不再**把 state 钉在 immue —— 那会让装备面板的
+        /// EquipSlot.set_panel 抛 NullReferenceException，工位格子直接打不开。
         /// </summary>
         public static void Tick()
         {
-            var ctx = WorldService.Ctx;
-            bool inSafeArea = ctx != null && ctx.in_safe_area;
-
-            if (inSafeArea != _wasInSafeArea)
-            {
-                _wasInSafeArea = inSafeArea;
-                // 进安全区的第一帧就还原：协程要先淡入 0.6 秒才走到 safe_area.Init()，
-                // 这个时间足够（Update 60Hz，约 36 帧）。
-                if (inSafeArea) RestoreAll();
-            }
-
-            // 安全区里不钉，也不再往下走
-            if (inSafeArea) return;
-
             if (!ImmuneEnabled) return;
             if (Time.unscaledTime < _nextTick) return;
-            _nextTick = Time.unscaledTime + 0.2f;
+            _nextTick = Time.unscaledTime + Interval;
 
             var mgr = Mgr;
             if (mgr?.slots_device == null) return;
@@ -143,24 +123,23 @@ namespace OneWayTicketsMod.Game
             {
                 var d = slot?.slot_device;
                 if (d == null) continue;
-                Pin(d);
+                Guard(d);
             }
         }
 
-        private static bool _wasInSafeArea;
-
-        private static void Pin(Device d)
+        /// <summary>把一台设备拉回「正常」：清异常 + 复位状态（含通知视图移除图标）。</summary>
+        private static void Guard(Device d)
         {
             try
             {
-                // 先清掉已经挂上的异常（图标会一起消失），再钉免疫
-                if (d.device_emergency != null) d.EnterSafeArea();
+                bool hasEmergency = d.device_emergency != null;
+                bool wrongState = d.state != Device.DeviceState.normal;
+                if (!hasEmergency && !wrongState) return;
 
-                if (d.state != Device.DeviceState.immue) d.state = Device.DeviceState.immue;
-
-                // CheckEmergency 每 tick 会 immu_countdown--，不续上就只免疫 1 tick
-                var field = ImmuField;
-                if (field != null) field.SetValue(d, ImmuTicks);
+                if (hasEmergency) ClearedCount++;
+                // EnterSafeArea 就是游戏自己的清理入口：通知各 View 移除异常图标、
+                // 把 device_emergency 置空、state 复位成 normal。见 Device.cs:276-289。
+                d.EnterSafeArea();
             }
             catch
             {
@@ -168,27 +147,18 @@ namespace OneWayTicketsMod.Game
             }
         }
 
-        /// <summary>关掉开关时把本 Mod 钉的 immue 状态还原成 normal。</summary>
+        /// <summary>关掉开关时把设备状态还原成 normal。</summary>
         private static void RestoreAll()
         {
             var mgr = Mgr;
             if (mgr?.slots_device == null) return;
 
-            var field = ImmuField;
             foreach (var slot in mgr.slots_device)
             {
                 var d = slot?.slot_device;
                 if (d == null) continue;
-                try
-                {
-                    if (d.state != Device.DeviceState.immue) continue;
-                    d.state = Device.DeviceState.normal;
-                    field?.SetValue(d, 0);
-                }
-                catch
-                {
-                    // 忽略
-                }
+                try { d.EnterSafeArea(); }
+                catch { /* 忽略 */ }
             }
         }
 
@@ -229,7 +199,7 @@ namespace OneWayTicketsMod.Game
             return n;
         }
 
-        /// <summary>当前处于「免疫中」的设备数量。</summary>
+        /// <summary>当前处于「免疫中」的设备数量（保留给旧面板文案用，现在基本恒为 0）。</summary>
         public static int ImmuneCount()
         {
             int n = 0;
@@ -244,7 +214,7 @@ namespace OneWayTicketsMod.Game
             int n = 0;
             foreach (var e in Collect())
             {
-                if (!e.Abnormal) continue;
+                if (e.State == Device.DeviceState.normal && e.Device.device_emergency == null) continue;
                 e.Device.EnterSafeArea();
                 n++;
             }
