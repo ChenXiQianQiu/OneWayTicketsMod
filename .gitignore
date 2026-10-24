@@ -21,6 +21,11 @@ changelog.txt
 LogOutput.log
 .vs/
 
+# 数据表提取工具的中间产物与构建输出
+_work/out/
+_work/DbTableDump/bin/
+_work/DbTableDump/obj/
+
 # 临时验证脚本 / 截图
 _work/*.png
 _work/shot_*.py
