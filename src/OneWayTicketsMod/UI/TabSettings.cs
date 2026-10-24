@@ -65,20 +65,6 @@ namespace OneWayTicketsMod.UI
             Hint("如果发现开着面板时游戏 UI 卡住不动，把它关掉即可。");
             EndCard();
 
-            BeginCard("容错");
-            bool screen = ToggleChip(Plugin.ScreenGuard.Value, "黑屏守卫（黑屏自动恢复）");
-            if (screen != Plugin.ScreenGuard.Value)
-            {
-                Plugin.ScreenGuard.Value = screen;
-                Notify(screen ? "已开启黑屏守卫" : "已关闭黑屏守卫");
-            }
-            Hint("进安全区 / 过场时如果画面一直黑着不恢复，会自动收掉黑幕并解除 ESC 锁定，同时把当时的游戏状态写进 BepInEx 日志。");
-            Hint("正常过场黑幕只有 0.6 秒左右，不会触发。");
-            Info(ScreenGuardService.FixCount > 0
-                ? $"已自动恢复 {ScreenGuardService.FixCount} 次"
-                : "尚未触发过");
-            EndCard();
-
             BeginCard("诊断");
             KV("Mod 版本", $"{Plugin.PluginName} v{Plugin.Version}", 110f);
             KV("CommonContext", CampCoinService.Ready ? "已就绪" : "未创建（还没进营地）", 110f);

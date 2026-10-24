@@ -7,19 +7,18 @@
 ├── AGENTS.md                       # 项目约定（必读）
 ├── src/OneWayTicketsMod/           # Mod 工程（本仓库唯一的 Mod）
 │   ├── OneWayTicketsMod.csproj
-│   ├── version.txt                 # 0.2.3，改版本必须同步 Plugin.Version
+│   ├── version.txt                 # 0.2.0，改版本必须同步 Plugin.Version
 │   ├── Plugin.cs                   # BepInEx 入口：配置 + 补丁 + 宿主装配
 │   ├── Game/                       # 业务层（不依赖 UI）
 │   │   ├── SingletonAccess.cs      # 反射读 m_instance，绝不 new
 │   │   ├── CampCoinService.cs      # 营地币读写 + HUD 刷新
 │   │   ├── WorldService.cs         # 局内金币 / 车辆耐久 / 无限耐久
-│   │   ├── CaravanSpeedService.cs  # 车速读取 / 直接设置 / 锁定 / NaN 与失控保护
+│   │   ├── CaravanSpeedService.cs  # 车速读取 / 直接设置 / 锁定
 │   │   ├── TeamService.cs          # 旅人列表 + 休息区开关
-│   │   ├── CharacterGuardService.cs# 旅人不会晕车（轮询置 isImmuneToStun）+ 全部唤醒
-│   │   ├── DeviceGuardService.cs   # 设备免疫异常 + 清除异常 + 设备列表
-│   │   └── ScreenGuardService.cs   # 黑屏守卫：黑幕卡死自愈 + 坐标 NaN 检测 + 现场快照
+│   │   ├── CharacterGuardService.cs# 旅人不会晕车 + 全部唤醒
+│   │   └── DeviceGuardService.cs   # 设备免疫异常 + 清除异常 + 设备列表
 │   ├── Patches/                    # 一个补丁只解决一件事
-│   │   ├── CubicleSetPatch.cs      # 休息区旅人可上工位（GetAllCharacters 后置）
+│   │   ├── CharacterHelperPatch.cs # 休息区旅人可上工位（GetAllCharacters 后置）
 │   │   ├── CharacterShockPatch.cs  # 旅人不会晕车（ApplyShockForce 前置）
 │   │   ├── DeviceOutlierPatch.cs   # 设备免疫异常（applied_outlier 前置，TargetMethod 反射）
 │   │   └── CaravanSpeedPatch.cs    # 锁定车速（CaravanMover.move 后置）

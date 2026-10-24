@@ -62,13 +62,11 @@ namespace OneWayTicketsMod.Game
         public static void WriteVelocity(WorldContext ctx, float target)
         {
             if (ctx == null) return;
-            if (!IsFinite(target)) return;
 
             float rad = 0f;
             try
             {
-                if (!Road_Info_Helper.try_get_leap_rad(ctx.caravan_pos.x, out rad))
-                    rad = 0f;
+                Road_Info_Helper.try_get_leap_rad(ctx.caravan_pos.x, out rad);
             }
             catch
             {
@@ -76,72 +74,12 @@ namespace OneWayTicketsMod.Game
                 rad = 0f;
             }
 
-            // road_slope 在路况曲线插值异常时会返回 NaN / ±Infinity，
-            // Mathf.Atan 会原样传出来，再算 cos 就是 NaN；
-            // 一旦把 NaN 写进 caravan_velocity，CaravanMover_Run.do 里的
-            // `caravan_pos += velocity/120` 会把位置也变成 NaN，
-            // 相机（LensMgr.calc_camera_pos 直接读 caravan_pos.x）跟着 NaN，
-            // 表现就是「UI 还在、画面全黑」——所以这里必须挡住。
-            if (!IsFinite(rad))
-            {
-                WarnOnce($"路况角度异常（{rad}），本次不写车速");
-                return;
-            }
-
             float cos = Mathf.Cos(rad);
             float sin = Mathf.Sin(rad);
             // 近乎垂直的坡面上 cos 趋近 0，限制一下避免把模长放大到离谱的值
             if (cos < 0.05f) cos = 0.05f;
 
-            float magnitude = target / cos;
-            if (!IsFinite(magnitude) || magnitude > MaxMagnitude)
-            {
-                WarnOnce($"车速模长异常（{magnitude}），本次不写车速");
-                return;
-            }
-
-            ctx.caravan_velocity = magnitude * new Vector2(cos, sin);
-        }
-
-        /// <summary>车速模长上限：正常玩法最高也就几十，超过这个值一定是算错了。</summary>
-        private const float MaxMagnitude = 5000f;
-
-        private static string _lastWarn;
-
-        private static void WarnOnce(string msg)
-        {
-            if (msg == _lastWarn) return;
-            _lastWarn = msg;
-            Plugin.LogWarn("车速写入已拦截：" + msg);
-        }
-
-        private static bool IsFinite(float v)
-            => !float.IsNaN(v) && !float.IsInfinity(v);
-
-        /// <summary>
-        /// 位置 / 速度已经被写成 NaN 时的自检。
-        /// 这种情况在 Unity 里不会抛异常，只会让相机跑到 NaN 坐标，
-        /// 于是画面全黑、UI 正常、游戏逻辑照跑 —— 极难自己发现，所以单独查一次。
-        /// </summary>
-        public static bool CheckBroken(out string detail)
-        {
-            detail = null;
-            var ctx = WorldService.Ctx;
-            if (ctx == null) return false;
-
-            if (!IsFinite(ctx.caravan_pos.x) || !IsFinite(ctx.caravan_pos.y))
-            {
-                detail = $"caravan_pos=({ctx.caravan_pos.x}, {ctx.caravan_pos.y})";
-                return true;
-            }
-
-            if (!IsFinite(ctx.caravan_velocity.x) || !IsFinite(ctx.caravan_velocity.y))
-            {
-                detail = $"caravan_velocity=({ctx.caravan_velocity.x}, {ctx.caravan_velocity.y})";
-                return true;
-            }
-
-            return false;
+            ctx.caravan_velocity = (target / cos) * new Vector2(cos, sin);
         }
 
         /// <summary>直接写车速（负数按 0 处理）。</summary>
@@ -164,16 +102,6 @@ namespace OneWayTicketsMod.Game
             float v = ctx.caravan_velocity.x;
             if (v > ObservedMax) ObservedMax = v;
 
-            // 车速失控保护：正常情况下这游戏的车速只有几十，
-            // 一旦被顶到几百（例如词缀牵引力叠加）车会直接冲出地图，
-            // 相机跟着 caravan_pos 跑，画面就是全黑。这里兜一下。
-            if (IsFinite(v) && v > RunawaySpeed)
-            {
-                WarnOnce($"车速异常（{v:0.0}），已限制到 {RunawaySpeed:0}");
-                WriteVelocity(ctx, RunawaySpeed);
-                return;
-            }
-
             // 兜底：不依赖 Harmony 补丁，Update 里也钉一次。
             // 物理是 120Hz、Update 一般 60Hz，两次物理 tick 之间只写一次，
             // 中间那帧会按阻力掉一点点，所以面板上可能看到 23.4 / 23.3 这种抖动，
@@ -181,9 +109,6 @@ namespace OneWayTicketsMod.Game
             if (LockEnabled && CaravanMover.move_type == EN_caravan_move_type.Run)
                 WriteVelocity(ctx, LockTarget);
         }
-
-        /// <summary>超过这个车速就认为失控了（正常玩法远达不到）。</summary>
-        private const float RunawaySpeed = 300f;
 
         /// <summary>
         /// 由 CaravanMover_Run.do 的后置补丁调用：把车速钉回锁定值。
