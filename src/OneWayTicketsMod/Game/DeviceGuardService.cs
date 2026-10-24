@@ -96,9 +96,42 @@ namespace OneWayTicketsMod.Game
         /// 每帧调用（面板关着也跑）：把车上所有设备的 state 钉在 immue，
         /// 这样 applied_outlier 第一行就 return，五种异常都进不来。
         /// 用 0.2 秒节流；immue 状态本身会持续到下一次写入，不会掉。
+        ///
+        /// ★ 安全区里必须撒手（v0.2.3 修的黑屏 bug）：
+        ///   Decompiled/World/World.Devices.DeviceUiViews/DeviceUiView.cs:67-69
+        ///       if (owner.state != Device.DeviceState.normal)
+        ///           show_emergency(owner.device_emergency);
+        ///   而 show_emergency 最后一行是 `de.init();`（同文件 233 行），没有 null 判断。
+        ///   immue 状态下 device_emergency 是 null → 直接 NullReferenceException。
+        ///
+        ///   进安全区的调用链（栈来自 BepInEx 日志）：
+        ///       WorldSceneRoot.IBlackScreenCoroutine
+        ///         → SafeAreaView.Init() → init_shop → init_device
+        ///         → DeviceBusinessPanel.Init → EquipmentMgr.Init
+        ///         → EquipSlot.init → EquipSlot.set_panel → Model.add_view
+        ///         → DeviceUiView.attach → show_emergency(null) → de.init()  ✗ NRE
+        ///   异常穿出协程后，IBlackScreenCoroutine 直接终止，
+        ///   黑幕永远停在 alpha=1、ban_esc 一直是 true —— 表现就是「进安全点黑屏」。
+        ///
+        ///   所以：一检测到 in_safe_area 就立刻把设备还原成 normal（并停止钉），
+        ///   安全区本来也没有战斗，不需要免疫。
         /// </summary>
         public static void Tick()
         {
+            var ctx = WorldService.Ctx;
+            bool inSafeArea = ctx != null && ctx.in_safe_area;
+
+            if (inSafeArea != _wasInSafeArea)
+            {
+                _wasInSafeArea = inSafeArea;
+                // 进安全区的第一帧就还原：协程要先淡入 0.6 秒才走到 safe_area.Init()，
+                // 这个时间足够（Update 60Hz，约 36 帧）。
+                if (inSafeArea) RestoreAll();
+            }
+
+            // 安全区里不钉，也不再往下走
+            if (inSafeArea) return;
+
             if (!ImmuneEnabled) return;
             if (Time.unscaledTime < _nextTick) return;
             _nextTick = Time.unscaledTime + 0.2f;
@@ -113,6 +146,8 @@ namespace OneWayTicketsMod.Game
                 Pin(d);
             }
         }
+
+        private static bool _wasInSafeArea;
 
         private static void Pin(Device d)
         {

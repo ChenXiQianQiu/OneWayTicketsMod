@@ -126,6 +126,37 @@ namespace OneWayTicketsMod.Game
             if (Time.unscaledTime < _nextSync) return;
             _nextSync = Time.unscaledTime + 0.5f;
             Sync();
+            WakeInSafeArea();
+        }
+
+        /// <summary>
+        /// 安全区里的「一直晕」修复。
+        ///
+        /// 反编译依据：Decompiled/World/World.Characters/CharacterMgr.cs:59-72
+        ///     foreach (Character character in characters)
+        ///     {
+        ///         character.ApplyShockForce(shockForce);        // ← 安全区里照样调
+        ///         if (!Singleton<WorldContext>.instance.in_safe_area)
+        ///             character.tick();                          // ← 安全区里不调
+        ///     }
+        /// 也就是说：进安全区之后，冲击判定还在跑，但推进状态倒计时的 tick 停了。
+        /// 只要在安全区里被震进 Coma，就永远走不到 state.end()，会一直晕着，
+        /// 而且安全区没有战斗，玩家也没法把他弄醒。
+        /// 这里在安全区里直接把昏迷状态清掉（和 Character.EnterSafeArea 完全一样的收尾方式）。
+        /// </summary>
+        private static void WakeInSafeArea()
+        {
+            var ctx = WorldService.Ctx;
+            if (ctx == null || !ctx.in_safe_area) return;
+
+            foreach (var c in All())
+            {
+                if (c == null || !(c.state is Coma)) continue;
+
+                c.state.end();
+                c.state = null;
+                Plugin.LogInfo($"安全区：已唤醒昏迷的旅人 {c.desc?.id}（安全区不跑 character.tick，昏迷不会自己结束）");
+            }
         }
 
         // ------------------------------------------------------------ 内部实现

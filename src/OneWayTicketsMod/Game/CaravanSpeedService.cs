@@ -102,6 +102,15 @@ namespace OneWayTicketsMod.Game
             float v = ctx.caravan_velocity.x;
             if (v > ObservedMax) ObservedMax = v;
 
+            // ★ 安全区里绝对不能写车速。
+            // CharacterMgr.tick（CharacterMgr.cs:59-72）在安全区里仍然会调
+            // character.ApplyShockForce，而它的输入是
+            //     (caravan_velocity - v_record) * 120f  →  character_focus_aceleration
+            // 安全区里车速本来会被游戏清零，我们要是每帧又钉回锁定值，
+            // 就会制造出巨大的加速度差 → 全员被震进 Coma；
+            // 而安全区里 character.tick() 不跑，Coma 永远不结束 → 旅人一直晕着。
+            if (ctx.in_safe_area) return;
+
             // 兜底：不依赖 Harmony 补丁，Update 里也钉一次。
             // 物理是 120Hz、Update 一般 60Hz，两次物理 tick 之间只写一次，
             // 中间那帧会按阻力掉一点点，所以面板上可能看到 23.4 / 23.3 这种抖动，
@@ -121,6 +130,7 @@ namespace OneWayTicketsMod.Game
 
             var ctx = WorldService.Ctx;
             if (ctx == null) return;
+            if (ctx.in_safe_area) return;
             if (CaravanMover.move_type != EN_caravan_move_type.Run) return;
 
             WriteVelocity(ctx, LockTarget);
