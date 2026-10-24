@@ -26,6 +26,9 @@ _work/out/
 _work/DbTableDump/bin/
 _work/DbTableDump/obj/
 
+# 分享包产物
+dist/
+
 # 临时验证脚本 / 截图
 _work/*.png
 _work/shot_*.py

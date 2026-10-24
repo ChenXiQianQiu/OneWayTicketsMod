@@ -68,6 +68,14 @@ cp bin/Debug/OneWayTicketsMod.dll \
 
 运行日志：`H:\Steam\steamapps\common\再再启程 One Way Tickets\BepInEx\LogOutput.log`
 
+打分享包（发给别人用，产物在 `dist/`，不入库）：
+
+```bash
+bash scripts/package.sh
+# → dist/再再启程Mod_v<版本>_含BepInEx.zip（解压到游戏根目录即用）
+# → dist/再再启程Mod_v<版本>_仅Mod.zip（对方自备 BepInEx 5.4.21 x64）
+```
+
 重新反编译（需要时）：
 
 ```bash

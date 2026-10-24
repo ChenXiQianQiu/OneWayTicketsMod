@@ -64,6 +64,30 @@ cp bin/Debug/OneWayTicketsMod.dll \
 | 引用 | `BepInEx` / `0Harmony` / `UnityEngine(.CoreModule/.IMGUIModule/.InputLegacyModule/.TextRenderingModule/.UI)` / `Commons` `World` `Camp` `Foundations` `AutoCodes` | 全部 `Private=false`，不复制进插件目录 |
 | `GameDir` 属性 | csproj 顶部一行 | 换机器只改这一行 |
 
+### 2.1 打分享包
+
+```bash
+bash scripts/package.sh
+```
+
+产物在 `dist/`（不入库）：
+
+| 文件 | 内容 | 给谁 |
+|---|---|---|
+| `再再启程Mod_v<版本>_含BepInEx.zip` | `winhttp.dll` + `doorstop_config.ini` + `BepInEx/core` + `BepInEx/plugins/OneWayTicketsMod` | 没装过 BepInEx 的人，解压到游戏根目录即用 |
+| `再再启程Mod_v<版本>_仅Mod.zip` | 只有 `BepInEx/plugins/OneWayTicketsMod/OneWayTicketsMod.dll` | 已经装了 BepInEx 5.4.21 x64 的人 |
+
+两个包都会带 `安装说明.txt`（UTF-8 BOM + CRLF，记事本直接打开不乱码）和
+`Mod修改内容说明.md`（直接复制 `share/` 下那份）。
+
+几个实现细节：
+
+- 版本号只从 `src/OneWayTicketsMod/version.txt` 取，包名和说明文字都跟着它走；
+- BepInEx 从**原始安装包** `E:\project\.tools\...\BepInEx_x64_5.4.21.0` 复制，
+  不碰游戏目录里那份（那里面有 `config/`、`cache/`、`LogOutput.log`，属于个人数据）；
+- 压缩用 .NET 的 `ZipFile.CreateFromDirectory(..., Encoding.UTF8)`，带 UTF-8 标志位，
+  否则中文文件名在 Windows 自带解压里会变乱码；`Compress-Archive` 没有这个参数，所以没用它。
+
 ## 3. 面板套件
 
 面板模板来自 `unity-imgui-mod-panel` 技能，直接复制后只改了三处：
