@@ -72,16 +72,20 @@ namespace OneWayTicketsMod.UI
                 Plugin.CubicleAlwaysShow.Value = cubicleShow;
                 Notify(cubicleShow ? "已开启：工位格子会一直显示" : "已关闭：恢复游戏原本的解锁逻辑", 3.5f);
             }
+            Info(CubicleViewService.Diagnose());
             GUILayout.BeginHorizontal();
-            Caption("当前", 40f);
-            GUILayout.Label(CubicleViewService.Diagnose(), PanelTheme.Sub);
             if (Btn("立即修复", 66f, PanelTheme.Mini, 20f))
                 Notify(CubicleViewService.RepairNow(), 4f);
+            if (Btn("一键上工位", 80f, PanelTheme.Mini, 20f))
+                Notify(CubicleViewService.FillAll(), 5f);
+            if (Btn("写诊断到日志", 88f, PanelTheme.Mini, 20f))
+                Notify(CubicleViewService.Dump(), 4f);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
-            Hint("游戏用 BattleContext.active_cubicle 控制工位格子显不显示，它只在解锁工位科技那一刻置 true，");
-            Hint("而每次换场景 / 进战斗 BattleContext.Init() 都会把它清成 false —— 于是之后新装 / 换上的设备");
-            Hint("（例如转轮机枪）格子会被直接关掉，只剩空占位框、点也没反应。开启后每秒把科技那两行重跑一遍。");
+            Hint("「工位格子」要能放人得同时满足三层：设备有工位数据 → 格子和工位绑上 → 格子是激活的。");
+            Hint("任何一层断了，表现都是「空占位框 / 点上去没反应」。开启后每秒把三层都补齐一遍。");
+            Hint("「一键上工位」走的是和手点格子完全相同的入口：它能把人安排上、手点不行 → 问题在点击层；");
+            Hint("它也安排不上 → 问题在数据层。无论哪种，点「写诊断到日志」后把 LogOutput.log 里 [工位诊断] 的行发我。");
             EndCard();
 
             BeginCard("诊断");

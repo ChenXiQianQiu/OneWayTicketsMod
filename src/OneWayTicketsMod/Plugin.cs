@@ -21,7 +21,7 @@ namespace OneWayTicketsMod
     {
         public const string Guid = "onewaytickets.resedit";
         public const string PluginName = "再再启程 资源编辑";
-        public const string Version = "0.2.6";
+        public const string Version = "0.2.7";
 
         internal static Plugin Instance { get; private set; }
 
@@ -66,10 +66,10 @@ namespace OneWayTicketsMod
                 + "读档 / 换局后会自动重新拉满；手动点「换下」的人会留在休息区。改动立即生效，不用重启。");
 
             CubicleAlwaysShow = Config.Bind("功能", "工位格子常显", true,
-                "游戏用 BattleContext.active_cubicle 控制「工位格子显不显示」，它只在解锁工位科技那一刻置 true，"
-                + "而每次换场景 / 进战斗 BattleContext.Init() 都会把它清成 false。"
-                + "结果就是之后新装 / 换上的设备（比如转轮机枪）工位格子直接被关掉，变成空占位框、点也没反应。"
-                + "开启后每秒把科技那两行重新执行一遍（active_cubicle = true + 让设备重新显示站位），只影响格子显不显示。");
+                "「工位格子」要能放人得同时满足三层：设备有工位数据（device_all.cubicles 建出 cubicle_list）、"
+                + "格子绑到了工位（cubicle_list[i].add_view(station)）、格子是激活状态。任何一层断了，"
+                + "表现都是「只剩空占位框、点上去没反应」。开启后每秒把这三层都补齐一遍（含按配置补建缺失的工位）。"
+                + "只影响格子显不显示 / 能不能绑上，不碰任何战斗数值。");
 
             NoComa = Config.Bind("功能", "旅人不会晕车", false,
                 "开启后给每个旅人补一份「油门焊死」词缀（免疫冲击昏迷），车辆颠簸、设备受击的震动都不再让旅人晕倒。改动立即生效，不用重启。");

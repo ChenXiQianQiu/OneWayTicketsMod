@@ -1,62 +1,79 @@
 // =============================================================================
-// CubicleViewService.cs — 工位格子常显（修「进战斗后工位消失、放不了人」）
+// CubicleViewService.cs — 工位格子（显示 + 可放人）
 //
-// 反编译依据：
-//   · Decompiled/World/World.Devices.DeviceUiViews/DeviceUiView.cs:60-66
-//       if (!Singleton<BattleContext>.instance.active_cubicle)
-//           foreach (CubicleUiView station in stations) station.gameObject.SetActive(false);
-//     设备 UI 视图 attach 时，只要 active_cubicle 是 false，就把所有工位格子关掉。
-//   · Decompiled/World/World.Techs/Tech_Unlock_Cubicle.cs:8-13
-//       public static void @do(string _num)
-//       {
-//           Singleton<BattleContext>.instance.active_cubicle = true;   // ← 唯一的置 true 点
-//           ...try_get_mgr("DeviceMgr", out DeviceMgr mgr);
-//           mgr.SetCubicle(hide: false);                               // ← 把格子显示出来
-//       }
-//     也就是说「工位格子」本来是靠科技解锁才出现的，而且只在解锁那一刻执行一次。
-//   · Decompiled/World/World/BattleContext.cs:351 / :431
-//       Init() → reset_context() → active_cubicle = false;
-//     每次场景初始化（WorldSceneRoot.cs:129 调 Init）都会把这个标志清掉，
-//     而科技不会再执行一遍。
+// ⚠ v0.2.6 的教训（已实测证伪）：
+//   v0.2.6 认为病因是 BattleContext.active_cubicle 被 BattleContext.Init() 清成 false，
+//   于是每秒重放 Tech_Unlock_Cubicle 那两行。结果用户实测「还是不显示」，
+//   而 BepInEx 日志里「active_cubicle 被游戏清成 false」一次都没出现
+//   —— 说明 active_cubicle 一直是 true，这条路根本不是病因。
+//   而且 mgr.SetCubicle(false) 会连带把「装备面板里的只读视图（only_read）」的格子也点亮，
+//   那个视图是 EquipSlot.set_panel() 特意 HideStation() 掉的，点亮就是新 bug。
 //
-// 于是就有了这个 bug 链条：
-//   1. 解锁工位科技 → active_cubicle = true，格子显示；
-//   2. 换场景 / 进战斗 → BattleContext.Init() 把 active_cubicle 清成 false；
-//   3. 此后「新建」的设备视图（战斗中装上/换上的设备，比如转轮机枪）attach 时，
-//      因为 active_cubicle 是 false，工位格子直接被 SetActive(false) 关掉；
-//      而早就在场上的设备视图是之前建的，格子还开着 —— 所以只有新设备「工位消失」。
-//   4. 玩家看到的就是：这台设备的工位变成空的占位框，点也没反应（站位对象没激活，
-//      收不到点击），也就是「不让放」。
+// 所以 v0.2.7 改成「不再猜，逐层硬修 + 写日志自证」。
 //
-// 修法：把科技那两行按秒重新执行一遍（默认开启，可在面板「设置」里关）：
-//   active_cubicle = true; DeviceMgr.SetCubicle(hide: false);
-// 只影响「格子显不显示」，不碰任何战斗数值；设备数量变化时也会补一次，
-// 因为新设备的视图可能是在两次轮询之间创建的。
+// 反编译依据（工位格子从「数据」到「能点」要过的四道关）：
+//   1. 数据层 Decompiled/World/World.Devices/Device.cs:429-437 InitData()
+//        if (rc.cubicles != null)
+//            foreach (uint cubicle in rc.cubicles)
+//                { var item = Cubicle_Helper.AddDeviceCubicle(this, cubicle); cubicle_list.Add(item); }
+//      工位对象是按 device_all.cubicles 这个 id 列表建出来的，建不出来 cubicle_list 就是空的。
+//   2. 绑定层 Decompiled/World/World.Devices.DeviceUiViews/DeviceUiView.cs:40-46 attach()
+//        for (int i = 0; i < stations.Count; i++)
+//            if (owner.cubicle_list.Count > i) owner.cubicle_list[i].add_view(stations[i]);
+//      UI 上每个格子(CubicleUiView)必须和 cubicle_list[i] 绑上，否则格子是「死的」。
+//   3. 显示层 同一个 attach() 的 :60-66（active_cubicle 判断）+ HideStation()
+//   4. 点击层 Decompiled/World/World.Devices.DeviceUiViews/DeviceStationView.cs:41-53
+//        PointerClick → Cubicle_Helper.SetCubicle(cubicle)
+//      Decompiled/World/World.Helpers/Cubicle_Helper.cs:65-79
+//        if (GetAllCharacters().Contains(selectCharacter) && ... && bc != null && ...)
+//      cubicle 为 null（没绑定）时点击**静默失败**，什么都不会发生 —— 表现就是「不让放」。
+//
+// 本类的做法：每秒扫一遍所有设备的战斗视图，逐项补齐
+//   a) cubicle_list 为空但 device_all.cubicles 有数据 → 按数据补建工位
+//   b) 格子没绑工位 → 绑到 cubicle_list[i]
+//   c) 格子被 SetActive(false) → 硬开
+//   d) 实在没有工位数据可绑 → 把死格子藏起来（不显示假的格子骗人）
+// 同时提供 Dump()：把每台设备 / 每个视图 / 每个格子的真实状态写进 BepInEx 日志，
+// 下一次出问题直接看日志就知道卡在哪一层，不用再截图猜。
 // =============================================================================
 
+using System.Collections.Generic;
 using System.Text;
+using Commons;
 using UnityEngine;
 using World;
+using World.Cubicles;
 using World.Devices;
 using World.Devices.DeviceUiViews;
+using World.Helpers;
 
 namespace OneWayTicketsMod.Game
 {
     internal static class CubicleViewService
     {
-        /// <summary>「工位格子常显」总开关。</summary>
+        /// <summary>「工位格子常显」总开关（面板「设置」页可关）。</summary>
         public static bool ForceVisible;
 
+        /// <summary>最近一次修复的统计，面板上显示用。</summary>
+        public struct RepairStats
+        {
+            public int Devices;        // 扫到的设备数
+            public int CreatedCubicles; // 补建的工位数据
+            public int BoundStations;   // 补绑定的格子
+            public int ShownStations;   // 硬开的格子
+            public int HiddenStations;  // 藏掉的死格子
+        }
+
         private static float _next;
-        private static int _lastDeviceCount = -1;
-        private static bool _loggedOff;
+        private static RepairStats _last;
         private static int _repairCount;
 
         public static DeviceMgr Mgr => SingletonAccess.Mgr<DeviceMgr>("DeviceMgr");
 
         public static bool Ready => Mgr != null;
 
-        /// <summary>每帧调用（内部 1 秒节流）。</summary>
+        // ------------------------------------------------------------ 每秒轮询
+
         public static void Tick()
         {
             if (!ForceVisible) return;
@@ -68,113 +85,388 @@ namespace OneWayTicketsMod.Game
             var mgr = Mgr;
             if (mgr == null) return;
 
+            // 顺手把科技标志补上（不是主修法，只是别让它成为额外的坑）
             var ctx = SingletonAccess.Get<BattleContext>();
-            bool flagOff = ctx != null && !ctx.active_cubicle;
+            if (ctx != null && !ctx.active_cubicle) ctx.active_cubicle = true;
 
-            if (flagOff)
-            {
-                // 和 Tech_Unlock_Cubicle.@do 完全一样的两步
-                ctx.active_cubicle = true;
-                if (!_loggedOff)
-                {
-                    Plugin.LogInfo("工位格子常显：active_cubicle 被游戏清成 false（换场景 / 进战斗），已重新置 true。");
-                    _loggedOff = true;
-                }
-            }
-            else
-            {
-                _loggedOff = false;
-            }
-
-            int count = DeviceCount(mgr);
-            // 设备数量变了说明有新装 / 换装的设备，它的视图可能刚建好又把格子关了
-            if (flagOff || count != _lastDeviceCount)
-            {
-                ShowAll(mgr);
-                _lastDeviceCount = count;
-                _repairCount++;
-            }
+            _last = RepairAll(mgr);
+            _repairCount++;
         }
 
-        /// <summary>面板「立即修复」用：立刻执行一遍并返回说明。</summary>
+        // ------------------------------------------------------------ 面板按钮
+
+        /// <summary>面板「立即修复」：立刻跑一遍并返回一行摘要。</summary>
         public static string RepairNow()
         {
             var mgr = Mgr;
             if (mgr == null) return "不在局内，读不到设备管理器。";
 
             var ctx = SingletonAccess.Get<BattleContext>();
-            bool wasOff = ctx != null && !ctx.active_cubicle;
             if (ctx != null) ctx.active_cubicle = true;
 
-            ShowAll(mgr);
-            _lastDeviceCount = DeviceCount(mgr);
+            _last = RepairAll(mgr);
             _repairCount++;
 
-            return wasOff
-                ? "已重新打开工位显示（游戏把 active_cubicle 清成了 false）"
-                : "已刷新所有设备的工位格子";
+            var s = _last;
+            if (s.CreatedCubicles + s.BoundStations + s.ShownStations == 0)
+                return $"检查了 {s.Devices} 台设备，格子都正常，没有可修的东西。";
+
+            return $"补工位 {s.CreatedCubicles} · 补绑定 {s.BoundStations} · 补显示 {s.ShownStations}"
+                 + (s.HiddenStations > 0 ? $" · 藏死格 {s.HiddenStations}" : "");
         }
 
-        /// <summary>面板诊断行。</summary>
+        // ------------------------------------------------------------ 核心修复
+
+        private static RepairStats RepairAll(DeviceMgr mgr)
+        {
+            var stats = new RepairStats();
+
+            try
+            {
+                foreach (var device in Devices(mgr))
+                {
+                    if (device == null) continue;
+                    stats.Devices++;
+
+                    // a) 数据层：设备有工位数据但一个都没建出来
+                    stats.CreatedCubicles += EnsureCubicles(device);
+
+                    // b/c/d) 绑定层 + 显示层
+                    if (device.views == null) continue;
+                    foreach (var view in device.views)
+                    {
+                        var ui = view as DeviceUiView;
+                        if (ui == null || ui.stations == null) continue;
+
+                        // 装备面板里的只读视图：EquipSlot.set_panel() 自己会 HideStation()，
+                        // 它用 EquipSlot.cub_list 显示格子，这里绝不能去点亮它的 stations，
+                        // 否则装备面板会多出一排幽灵格子（v0.2.6 的副作用）。
+                        if (ui.only_read) continue;
+
+                        for (int i = 0; i < ui.stations.Count; i++)
+                        {
+                            var station = ui.stations[i];
+                            if (station == null) continue;
+
+                            // b) 没绑工位 → 绑到第 i 个工位（和游戏 attach() 的规则一致）
+                            if (station.owner == null && i < device.cubicle_list.Count)
+                            {
+                                var cub = device.cubicle_list[i];
+                                if (cub != null)
+                                {
+                                    cub.add_view(station);
+                                    stats.BoundStations++;
+                                }
+                            }
+
+                            // d) 还是没绑上 → 这格永远放不了人，藏掉
+                            if (station.owner == null)
+                            {
+                                if (station.gameObject.activeSelf)
+                                {
+                                    station.gameObject.SetActive(false);
+                                    stats.HiddenStations++;
+                                }
+                                continue;
+                            }
+
+                            // c) 有工位但格子被关掉了 → 硬开
+                            if (!station.gameObject.activeSelf)
+                            {
+                                station.gameObject.SetActive(true);
+                                stats.ShownStations++;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.LogWarn("修复工位格子时出错：" + ex.Message);
+            }
+
+            return stats;
+        }
+
+        /// <summary>
+        /// 按 device_all.cubicles 把缺失的工位数据补建出来。
+        /// 只在「一个都没有」时补，避免把已存在的工位重复加进 CubiclesMgr。
+        /// </summary>
+        private static int EnsureCubicles(Device device)
+        {
+            if (device.cubicle_list == null) return 0;
+            if (device.cubicle_list.Count > 0) return 0;
+
+            var wanted = device.desc?.cubicles;
+            if (wanted == null || wanted.Count == 0) return 0;
+
+            int added = 0;
+            foreach (var id in wanted)
+            {
+                try
+                {
+                    var cub = Cubicle_Helper.AddDeviceCubicle(device, id);
+                    if (cub == null) continue;
+                    device.cubicle_list.Add(cub);
+                    added++;
+                }
+                catch (System.Exception ex)
+                {
+                    Plugin.LogWarn($"补建工位失败（设备 {device.desc?.id} 工位 {id}）：{ex.Message}");
+                    break;
+                }
+            }
+
+            if (added > 0)
+                Plugin.LogInfo($"工位修复：设备 {DeviceName(device)} 原本没有任何工位，已按配置补建 {added} 个。");
+
+            return added;
+        }
+
+        // ------------------------------------------------------------ 一键上工位
+
+        /// <summary>
+        /// 把前排空闲旅人自动安排到车上的空工位。
+        ///
+        /// 用途有两个：
+        ///   1. 真正的功能——不想一个个点的时候一键铺满；
+        ///   2. 诊断——它走的是和「玩家点格子」完全相同的入口
+        ///      （Cubicle_Helper.SetSelectCharacter + SetCubicle），
+        ///      如果这里能安排上人而手点不行，问题就在 UI 点击层（格子没激活 / 被别的界面挡住），
+        ///      如果这里也安排不上，问题在数据层（没工位 / 没绑定 / 旅人状态不允许）。
+        ///
+        /// 只遍历 mgr.slots_device —— 也就是真的装在车上的设备，
+        /// 不会像 v0.2.5 删掉的「工位分配」那样把旅人塞进已经不在车上的历史设备。
+        /// </summary>
+        public static string FillAll()
+        {
+            var mgr = Mgr;
+            if (mgr == null) return "不在局内，读不到设备管理器。";
+
+            var charMgr = SingletonAccess.Mgr<World.Characters.CharacterMgr>("CharacterMgr");
+            if (charMgr == null) return "读不到旅人管理器。";
+
+            var empty = new List<BasicCubicle>();
+            int deviceCount = 0;
+            foreach (var device in Devices(mgr))
+            {
+                deviceCount++;
+                if (device.cubicle_list == null) continue;
+                foreach (var cub in device.cubicle_list)
+                    if (cub != null && cub.worker == null) empty.Add(cub);
+            }
+
+            if (deviceCount == 0) return "车上没有设备。";
+            if (empty.Count == 0) return $"车上 {deviceCount} 台设备都没有空工位（或者压根没工位数据）。";
+
+            var idle = new List<World.Characters.Character>();
+            if (charMgr.characters != null)
+            {
+                foreach (var c in charMgr.characters)
+                {
+                    if (c == null) continue;
+                    if (c.state != null) continue;                       // 昏迷 / 亢奋等状态不安排
+                    if (Cubicle_Helper.GetCubicle(c) != null) continue;   // 已经在别的工位上
+                    idle.Add(c);
+                }
+            }
+
+            if (idle.Count == 0) return $"空工位 {empty.Count} 个，但操作中没有空闲旅人。";
+
+            int placed = 0;
+            for (int i = 0; i < empty.Count && placed < idle.Count; i++)
+            {
+                var cub = empty[i];
+                var who = idle[placed];
+                try
+                {
+                    Cubicle_Helper.SetSelectCharacter(who);
+                    Cubicle_Helper.SetCubicle(cub);
+                    if (cub.worker != null) placed++;
+                    else Cubicle_Helper.SetSelectCharacter(null);
+                }
+                catch (System.Exception ex)
+                {
+                    Plugin.LogWarn("安排旅人上工位失败：" + ex.Message);
+                    try { Cubicle_Helper.SetSelectCharacter(null); } catch { }
+                }
+            }
+
+            if (placed == 0)
+                return $"空工位 {empty.Count} 个、空闲旅人 {idle.Count} 人，但一个都没安排上——说明卡在数据/状态层，点「写诊断到日志」发我看。";
+
+            return $"已安排 {placed} 人上工位（空工位 {empty.Count} 个 · 空闲旅人 {idle.Count} 人）。";
+        }
+
+        // ------------------------------------------------------------ 诊断
+
+        /// <summary>
+        /// 把工位相关的真实状态整段写进 BepInEx 日志（LogOutput.log），
+        /// 关键字统一是「[工位诊断]」，出问题时直接 grep 这个就能看到卡在哪一层。
+        /// </summary>
+        public static string Dump()
+        {
+            var sb = new StringBuilder();
+            void W(string line) { sb.AppendLine("[工位诊断] " + line); }
+
+            W("===== 开始 =====");
+
+            var mgr = Mgr;
+            if (mgr == null)
+            {
+                W("读不到 DeviceMgr（当前不在探索 / 战斗场景）");
+                W("===== 结束 =====");
+                Plugin.LogInfo(sb.ToString().TrimEnd());
+                return "不在局内，已把「读不到设备管理器」写进日志。";
+            }
+
+            var ctx = SingletonAccess.Get<BattleContext>();
+            var world = SingletonAccess.Get<WorldContext>();
+            var charMgr = SingletonAccess.Mgr<World.Characters.CharacterMgr>("CharacterMgr");
+
+            W($"active_cubicle={(ctx != null && ctx.active_cubicle ? "true" : "false")}"
+              + $" · 安全区={(world != null && world.in_safe_area ? "true" : "false")}"
+              + $" · 开关={(ForceVisible ? "开" : "关")}");
+
+            var selected = Cubicle_Helper.GetSelectCharacter();
+            W($"选中旅人={(selected == null ? "无（这时点格子什么都不会发生）" : TeamService.NameOf(selected))}");
+
+            if (charMgr != null)
+                W($"旅人：操作中 {charMgr.characters?.Count ?? 0} / 休息区 {charMgr.backup?.backup_characters?.Count ?? 0}");
+
+            int deviceCount = 0, stationTotal = 0, stationActive = 0, stationBound = 0, deadSlot = 0;
+
+            foreach (var pair in DeviceSlots(mgr))
+            {
+                var device = pair.Value;
+                if (device == null) continue;
+                deviceCount++;
+
+                var wanted = device.desc?.cubicles;
+                W($"- [{pair.Key}] {DeviceName(device)}"
+                  + $" 配置工位={wanted?.Count ?? 0}"
+                  + $" 已建工位={device.cubicle_list?.Count ?? 0}"
+                  + $" 视图={device.views?.Count ?? 0}");
+
+                if (device.cubicle_list != null)
+                {
+                    for (int i = 0; i < device.cubicle_list.Count; i++)
+                    {
+                        var cub = device.cubicle_list[i];
+                        if (cub == null) { W($"    工位#{i} = null"); continue; }
+                        W($"    工位#{i} id={cub.desc?.id} 行为={cub.desc?.cubicle_behaviour}"
+                          + $" 工人={(cub.worker == null ? "无" : TeamService.NameOf(cub.worker))}"
+                          + $" 视图数={cub.views?.Count ?? 0}");
+                    }
+                }
+
+                if (device.views == null) continue;
+                int vi = 0;
+                foreach (var v in device.views)
+                {
+                    var ui = v as DeviceUiView;
+                    if (ui == null) continue;
+                    W($"    视图#{vi} {ui.GetType().Name} only_read={ui.only_read}"
+                      + $" 格子={ui.stations?.Count ?? 0}");
+                    if (ui.stations == null) { vi++; continue; }
+
+                    for (int i = 0; i < ui.stations.Count; i++)
+                    {
+                        var st = ui.stations[i];
+                        if (st == null) { W($"      格子#{i} = null"); continue; }
+                        stationTotal++;
+                        if (st.gameObject.activeSelf) stationActive++;
+                        if (st.owner != null) stationBound++;
+                        else deadSlot++;
+                        W($"      格子#{i} active={st.gameObject.activeSelf}"
+                          + $" 绑定={(st.owner == null ? "无（死格子，点了没反应）" : "工位 " + st.owner.desc?.id)}"
+                          + $" 工人={(st.owner?.worker == null ? "无" : TeamService.NameOf(st.owner.worker))}"
+                          + $" 高亮={(st.highlight != null && st.highlight.activeSelf ? "on" : "off")}");
+                    }
+                    vi++;
+                }
+            }
+
+            W($"合计：设备 {deviceCount} 台 · 格子 {stationTotal} 个（显示 {stationActive} / 已绑定 {stationBound} / 死格 {deadSlot}）");
+            W($"已执行修复 {_repairCount} 次");
+            W("===== 结束 =====");
+
+            var text = sb.ToString().TrimEnd();
+            Plugin.LogInfo(text);
+            return $"已写入日志：设备 {deviceCount} 台 · 格子 {stationTotal} 个（显示 {stationActive} / 绑定 {stationBound} / 死格 {deadSlot}）";
+        }
+
+        /// <summary>面板诊断行（一行摘要，不写日志）。</summary>
         public static string Diagnose()
         {
             var mgr = Mgr;
             if (mgr == null) return "不在局内";
 
             var ctx = SingletonAccess.Get<BattleContext>();
-            int total = 0, shown = 0;
+            int total = 0, shown = 0, bound = 0;
             foreach (var device in Devices(mgr))
             {
+                if (device.views == null) continue;
                 foreach (var view in device.views)
                 {
-                    if (!(view is DeviceUiView ui) || ui.stations == null) continue;
+                    var ui = view as DeviceUiView;
+                    if (ui == null || ui.stations == null) continue;
                     foreach (var station in ui.stations)
                     {
                         if (station == null) continue;
                         total++;
                         if (station.gameObject.activeSelf) shown++;
+                        if (station.owner != null) bound++;
                     }
                 }
             }
 
             var sb = new StringBuilder();
             sb.Append("active_cubicle=").Append(ctx != null && ctx.active_cubicle ? "true" : "false");
-            sb.Append(" · 设备 ").Append(DeviceCount(mgr)).Append(" 台");
-            sb.Append(" · 站位 ").Append(shown).Append('/').Append(total).Append(" 显示");
-            if (_repairCount > 0) sb.Append(" · 已补显示 ").Append(_repairCount).Append(" 次");
+            sb.Append(" · 设备 ").Append(CountDevices(mgr)).Append(" 台");
+            sb.Append(" · 格子 ").Append(shown).Append('/').Append(total).Append(" 显示");
+            sb.Append(" · ").Append(bound).Append(" 个已绑工位");
+            if (_repairCount > 0) sb.Append(" · 已修 ").Append(_repairCount).Append(" 轮");
             return sb.ToString();
         }
 
-        private static void ShowAll(DeviceMgr mgr)
-        {
-            try
-            {
-                // 等价于 Tech_Unlock_Cubicle 的第二行：对每台设备 notify_set_cubicle(false)
-                mgr.SetCubicle(false);
-            }
-            catch (System.Exception ex)
-            {
-                Plugin.LogWarn("显示工位格子失败：" + ex.Message);
-            }
-        }
+        // ------------------------------------------------------------ 工具
 
-        private static int DeviceCount(DeviceMgr mgr)
-        {
-            int count = 0;
-            if (mgr.slots_device == null) return 0;
-            foreach (var slot in mgr.slots_device)
-                if (slot?.slot_device != null) count++;
-            return count;
-        }
-
-        private static System.Collections.Generic.IEnumerable<Device> Devices(DeviceMgr mgr)
+        private static IEnumerable<KeyValuePair<string, Device>> DeviceSlots(DeviceMgr mgr)
         {
             if (mgr.slots_device == null) yield break;
             foreach (var slot in mgr.slots_device)
             {
-                var device = slot?.slot_device;
-                if (device != null) yield return device;
+                if (slot == null) continue;
+                yield return new KeyValuePair<string, Device>(slot._name, slot.slot_device);
             }
+        }
+
+        private static IEnumerable<Device> Devices(DeviceMgr mgr)
+        {
+            foreach (var pair in DeviceSlots(mgr))
+                if (pair.Value != null) yield return pair.Value;
+        }
+
+        private static int CountDevices(DeviceMgr mgr)
+        {
+            int n = 0;
+            foreach (var _ in Devices(mgr)) n++;
+            return n;
+        }
+
+        private static string DeviceName(Device device)
+        {
+            try
+            {
+                var localized = Localization_Utility.get_localization(device.desc?.name);
+                if (!string.IsNullOrEmpty(localized)) return localized;
+            }
+            catch
+            {
+                // 本地化表未就绪
+            }
+            return "设备" + (device.desc?.id.ToString() ?? "?");
         }
     }
 }
