@@ -131,8 +131,7 @@ namespace OneWayTicketsMod.UI
             if (Btn("解锁全部营地币", 118f, PanelTheme.Button, 24f)) DoUnlockAll();
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
-            Hint("「一键满资源」= 已解锁的营地币全部拉满 + 局内金币拉满 + 车辆回满。局外数值在回营地/存档时落地。");
-            Hint("「补建」用于秘能这类「已解锁但还没获得过」的币：先补一条 0，之后才能在营地里显示和修改。");
+            Hint("「一键满资源」= 已解锁的营地币拉满 + 局内金币拉满 + 车辆回满；「补建」给「已解锁但还没获得过」的币补一条 0。");
             EndCard();
 
             BeginCard("当前状态");
@@ -152,7 +151,6 @@ namespace OneWayTicketsMod.UI
                 : "不在局内", 88f);
             KV("昏迷旅人", TeamService.Ready ? $"{CharacterGuardService.ComaCount()} 人" : "不在局内", 88f);
             KV("异常设备", DeviceGuardService.Ready ? $"{DeviceGuardService.AbnormalCount()} 台" : "不在局内", 88f);
-            Hint("数值实时读取自游戏对象，不写死地址，重开游戏也不会失效。");
             EndCard();
         }
 

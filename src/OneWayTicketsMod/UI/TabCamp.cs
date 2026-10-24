@@ -19,7 +19,7 @@ namespace OneWayTicketsMod.UI
             {
                 BeginCard("营地资源");
                 Info("还没读到营地数据。");
-                Hint("请先进入营地（或读档进营地）一次，再回到本面板。局外资源保存在存档里，菜单界面时对象还没创建。");
+                Hint("先进入营地一次，再回来看本页。");
                 EndCard();
                 return;
             }

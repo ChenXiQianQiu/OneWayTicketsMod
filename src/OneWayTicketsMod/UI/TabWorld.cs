@@ -20,7 +20,7 @@ namespace OneWayTicketsMod.UI
             {
                 BeginCard("局内数据");
                 Info("当前不在探索场景。");
-                Hint("开始一局探索后再打开本页；局外（营地 / 菜单）时这些对象还不存在。");
+                Hint("开始一局探索后再打开本页。");
                 EndCard();
                 return;
             }
@@ -61,7 +61,6 @@ namespace OneWayTicketsMod.UI
             }
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
-            Hint("金币是背包管理器上的一个整数，改完立刻生效（背包 UI 下一次刷新就会变）。");
             EndCard();
 
             // ------------------------------------------------------------ 车辆耐久
@@ -126,8 +125,7 @@ namespace OneWayTicketsMod.UI
                 WorldService.InfiniteDurability = infinite;
                 Notify(infinite ? "无限耐久已开启" : "无限耐久已关闭");
             }
-            Hint("无限耐久在面板关闭后依然生效；退出本局探索时记得关掉，否则新一局也会继续生效。");
-            Hint("耐久上限在换车 / 新开一局时会被车辆数据覆盖，属正常现象。");
+            Hint("无限耐久关掉面板也生效，换局前记得关。");
             EndCard();
 
             // ------------------------------------------------------------ 车辆速度
@@ -218,10 +216,7 @@ namespace OneWayTicketsMod.UI
                 }
             }
 
-            Hint("「设为」= 直接写当前车速，下一帧物理就按它推进；「取最高」= 用本次探索跑出过的最高车速。");
-            Hint("锁定只在「地面行驶」时生效，跳跃 / 滞空 / 安全区不干预，避免打乱落地判定。");
-            Hint("锁定靠每帧回写实现，面板上的数值可能有 ±0.1 的抖动，属正常现象。");
-            Hint("锁定期间要换目标值：改完输入框点「应用」即可，锁定值会一起更新。");
+            Hint("「设为」直接写车速，「取最高」用本次探索跑出的最高值；锁定只在地面行驶时生效。");
             EndCard();
         }
     }

@@ -50,8 +50,7 @@ namespace OneWayTicketsMod.UI
             GUILayout.EndHorizontal();
 
             KV("词缀", CharacterGuardService.Diagnose(), 60f);
-            Hint("做法是给每位旅人补一份游戏自带的「油门焊死」词缀（效果就是免疫冲击昏迷，附带少量车轮牵引力）。");
-            Hint("换人 / 读档后 0.5 秒内自动补齐；关掉开关只撤本 Mod 加的那份，旅人自带的词缀不动。");
+            Hint("给每位旅人补一份「油门焊死」词缀，免疫冲击昏迷；关掉只撤本 Mod 加的那份。");
             EndCard();
 
             BeginCard("解除操作中人数上限");
@@ -77,9 +76,7 @@ namespace OneWayTicketsMod.UI
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
 
-            Hint("游戏把「操作中」写死成 6 人：CharacterMgr.AddCharacter / TakeCharacterToFront 都判 characters.Count < 6。");
-            Hint("开启后整支队伍（最多 12 人）都待在操作中，于是游戏自己的「点人头像 → 点工位」对所有人都能生效，不依赖任何补丁。");
-            Hint("读档 / 换局后会自动重新拉满；在列表里点「换下」的人会留在休息区，不会被反复拉上来。");
+            Hint("游戏把「操作中」写死成 6 人，开启后整队都能站在操作中，工位点选对所有人都生效。");
             EndCard();
 
             BeginCard("工位（一键上工位 / 自动补位）");
@@ -88,8 +85,7 @@ namespace OneWayTicketsMod.UI
                 Notify(CubicleViewService.FillAll(), 5f);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
-            Hint("把「操作中」里空闲的旅人一次性铺到车上的空工位。走的是和手点格子完全相同的入口，");
-            Hint("只遍历真的装在车上的设备，不会把人塞进已经拆掉的旧设备。");
+            Hint("把操作中里空闲的旅人铺到车上的空工位；自动补位每 2 秒检查一次，不会抢你正在选的人。");
 
             bool autoFill = ToggleChip(Plugin.AutoFillCubicle.Value, "自动补满空工位（每 2 秒检查一次）");
             if (autoFill != Plugin.AutoFillCubicle.Value)
@@ -97,8 +93,6 @@ namespace OneWayTicketsMod.UI
                 Plugin.AutoFillCubicle.Value = autoFill;
                 Notify(autoFill ? "已开启：空工位会自己补人" : "已关闭：不再自动安排旅人", 3.5f);
             }
-            Hint("开启后：车上出现空工位、操作中又有空闲旅人，就自动安排上；没有空工位或没有空闲旅人时它什么都不做。");
-            Hint("你正在游戏里手动点选旅人时，自动补位会跳过这一轮，不会把你选好的人抢走。");
             EndCard();
 
             DrawPartnerCard();
@@ -112,7 +106,7 @@ namespace OneWayTicketsMod.UI
             }
 
             BeginCard($"旅人列表（操作中 {TeamService.FrontCount} · 休息区 {TeamService.BackupCount}）");
-            Hint("「上阵」= 换到操作中（能上工位）；「换下」= 回休息区。工位请用游戏自己的方式安排（点人头像 → 点工位）。");
+            Hint("「上阵」= 换到操作中（能上工位），「换下」= 回休息区。");
             _teamScroll = BeginList(_teamScroll, 200f);
             foreach (var entry in TeamService.Collect())
             {
@@ -164,7 +158,6 @@ namespace OneWayTicketsMod.UI
                 GUILayout.EndHorizontal();
             }
             EndList();
-            Hint("「状态」不是「正常」说明该旅人正在昏迷 / 眩晕等，这种状态下游戏不允许他上工位。");
             EndCard();
         }
 
@@ -221,9 +214,8 @@ namespace OneWayTicketsMod.UI
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
 
-            Hint("休息所里那些黑色剪影就是「没见过」的角色：游戏要求先在局内让他加入过队伍一次，格子才点得开。");
-            Hint("「标记为已见」只解开这一层门槛，之后仍要回营地伙伴休息所，按正常流程花科技 / 资源收人（成就也照常判定）。");
-            Hint("「特殊伙伴全收下」会跳过资源消耗；游戏的查漏补缺在下次读档时会把「初来乍到」成就补给你。");
+            Hint("黑色剪影 = 没见过的角色，游戏要求先在局内让他入队一次才点得开。");
+            Hint("「标记为已见」只解锁可点状态，之后仍要在休息所花资源收人；「收为伙伴」跳过资源消耗。");
 
             _partnerScroll = BeginList(_partnerScroll, 150f);
             foreach (var p in partners)
@@ -265,8 +257,6 @@ namespace OneWayTicketsMod.UI
                 GUILayout.EndHorizontal();
             }
             EndList();
-
-            Hint("「标记为已见」覆盖全部角色（休息所里两类格子都有）；「收为伙伴」只对特殊伙伴有意义，普通旅人局内入队时游戏自己就会记。");
             EndCard();
         }
     }

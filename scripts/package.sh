@@ -19,7 +19,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJ="$ROOT/src/OneWayTicketsMod"
-SHARE_DOC="$ROOT/share/Mod修改内容说明.md"
 BEPINEX_SRC="E:/project/.tools/Unity/Modding/BepInEx/BepInEx_x64_5.4.21.0"
 DIST="$ROOT/dist"
 STAGE="$DIST/_stage"
@@ -100,13 +99,14 @@ TXT
         cat <<'TXT'
 功能一览
 --------
-详见同目录的「Mod修改内容说明.md」。常用的是：
-  · 营地资源：里程券 / 食物 / 建材 / 珍宝 / 秘能逐项改，或一键满资源
-  · 局内：金币、车辆耐久、车速锁定
-  · 旅人：不晕车、解除「操作中」6 人上限、一键上工位、自动补位
-  · 旅人：伙伴休息所 —— 点亮「没见过」的角色、直接把特殊伙伴收下
-  · 设备：免疫点燃 / 机械故障 / 腐蚀 / 缠绕 / 打湿
-  · 设置：隐藏安全点那面奇物墙、面板缩放、改开关键
+按 F1 打开面板，页签从左到右：
+  · 概览：一键满资源、补建未获得的营地币、解锁全部营地币
+  · 营地资源：里程券 / 食物 / 建材 / 珍宝 / 秘能逐项改，或全部 +1万 / 拉满
+  · 局内：金币、车辆耐久与上限、无限耐久、车速（直接设值 / 锁定）
+  · 旅人：不晕车、解除「操作中」6 人上限、一键上工位、自动补位、
+          伙伴休息所（点亮「没见过」的角色、把特殊伙伴直接收下）
+  · 设备：免疫点燃 / 机械故障 / 腐蚀 / 缠绕 / 打湿，一键清除异常
+  · 设置：改开关键、满资源目标值、系统字体、隐藏安全点奇物墙、工位格子常显
 
 常见问题
 --------
@@ -146,7 +146,6 @@ echo "== 组装：仅 Mod =="
 ONLY="$STAGE/only/$FOLDER"
 mkdir -p "$ONLY/BepInEx/plugins/OneWayTicketsMod"
 cp "$DLL" "$ONLY/BepInEx/plugins/OneWayTicketsMod/"
-cp "$SHARE_DOC" "$ONLY/Mod修改内容说明.md"
 write_readme "$ONLY/安装说明.txt" no
 
 # ---------------------------------------------------------------- 完整包
@@ -157,7 +156,6 @@ cp -r "$BEPINEX_SRC/BepInEx/core" "$FULL/BepInEx/"
 cp "$BEPINEX_SRC/winhttp.dll" "$FULL/"
 cp "$BEPINEX_SRC/doorstop_config.ini" "$FULL/"
 cp "$DLL" "$FULL/BepInEx/plugins/OneWayTicketsMod/"
-cp "$SHARE_DOC" "$FULL/Mod修改内容说明.md"
 write_readme "$FULL/安装说明.txt" yes
 
 # ---------------------------------------------------------------- 压缩
@@ -176,7 +174,8 @@ zip_dir() {
 
 FULL_ZIP="$DIST/再再启程Mod_v${VERSION}_含BepInEx.zip"
 ONLY_ZIP="$DIST/再再启程Mod_v${VERSION}_仅Mod.zip"
-rm -f "$FULL_ZIP" "$ONLY_ZIP"
+# 先清掉 dist 里其它版本的包，避免发错
+rm -f "$DIST"/再再启程Mod_v*_含BepInEx.zip "$DIST"/再再启程Mod_v*_仅Mod.zip
 zip_dir "$STAGE/full/$FOLDER" "$FULL_ZIP"
 zip_dir "$STAGE/only/$FOLDER" "$ONLY_ZIP"
 

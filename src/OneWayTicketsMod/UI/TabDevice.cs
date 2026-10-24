@@ -53,11 +53,7 @@ namespace OneWayTicketsMod.UI
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
 
-            Hint("异常状态指的是设备面板上的燃烧、机械故障、腐蚀、缠绕、潮湿这五种。");
-            Hint("开启后每 0.1 秒检查一次，一发现异常立刻清掉（走游戏自己的 EnterSafeArea 清理逻辑，图标会一起消失）。");
-            Hint("为什么不是「提前钉住」：把设备钉在「免疫」状态会让装备面板打开时报错，");
-            Hint("那台设备的工位格子就再也打不开了（v0.2.8 已修）。现在异常最多只存在 0.1 秒。");
-            Hint("只免疫异常，普通掉血仍会掉（要免掉血请开「局内」页的无限耐久）。");
+            Hint("开启后设备不会再进入燃烧 / 机械故障 / 腐蚀 / 缠绕 / 潮湿；普通掉血仍会掉。");
             EndCard();
 
             if (!DeviceGuardService.Ready)
@@ -104,7 +100,7 @@ namespace OneWayTicketsMod.UI
             }
             EndList();
 
-            Hint("「状态」不是「正常 / 免疫中」就说明设备正处在异常中，会掉输出或持续掉血。");
+            Hint("「状态」不是「正常 / 免疫中」就说明设备正处在异常中。");
             EndCard();
         }
 

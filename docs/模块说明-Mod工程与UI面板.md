@@ -27,7 +27,6 @@
 │       ├── PanelWidgets.cs         # 卡片、KV 行、按钮、输入框、限高滚动
 │       ├── ModPanel.cs             # 窗口壳：标题栏 / 竖排导航 / 缩放 / 拖动 / 按键捕获
 │       ├── PanelHost.cs            # 常驻 MonoBehaviour：按键轮询 + OnGUI 转发 + 每帧 Tick
-│       ├── UiInputGuard.cs         # 面板可见时禁用游戏 UI 输入模块（防点击穿透）
 │       ├── MainPanel.cs            # 面板外壳 + 概览页
 │       ├── TabCamp.cs              # 营地资源页
 │       ├── TabWorld.cs             # 局内页（金币 / 耐久 / 车速）
@@ -77,8 +76,8 @@ bash scripts/package.sh
 | `再再启程Mod_v<版本>_含BepInEx.zip` | `winhttp.dll` + `doorstop_config.ini` + `BepInEx/core` + `BepInEx/plugins/OneWayTicketsMod` | 没装过 BepInEx 的人，解压到游戏根目录即用 |
 | `再再启程Mod_v<版本>_仅Mod.zip` | 只有 `BepInEx/plugins/OneWayTicketsMod/OneWayTicketsMod.dll` | 已经装了 BepInEx 5.4.21 x64 的人 |
 
-两个包都会带 `安装说明.txt`（UTF-8 BOM + CRLF，记事本直接打开不乱码）和
-`Mod修改内容说明.md`（直接复制 `share/` 下那份）。
+两个包都会带 `安装说明.txt`（UTF-8 BOM + CRLF，记事本直接打开不乱码；内容按有无 BepInEx 分两套安装步骤）。
+**不再附带 `share/Mod修改内容说明.md`** —— 安装说明里已经有一份简版功能一览，发给别人够用了。
 
 几个实现细节：
 
@@ -94,21 +93,23 @@ bash scripts/package.sh
 
 1. 命名空间 `ModPanelKit` → `OneWayTicketsMod.UI`；
 2. `PanelTheme.Value` 关掉 `wordWrap`（数值放在定宽行里，换行会撑高行高）；
-3. `PanelHost` 增加 `OnTick` 回调（承载「无限耐久」「HUD 脏刷新」「点击拦截」这类常驻逻辑）。
+3. `PanelHost` 增加 `OnTick` 回调（承载「无限耐久」「HUD 脏刷新」这类常驻逻辑）。
 
 页签用 `partial class MainPanel` 拆到 `Tab*.cs`，每个文件都在 500 行以内。
 
 ## 4. 踩过的坑（本作特有）
 
-### 4.1 点击穿透
+### 4.1 点击穿透（v0.4.1 起不再处理）
 
 IMGUI 画在所有 Canvas 之上，但它不参与游戏的 `EventSystem`，
-所以点面板按钮时底下的 UGUI 按钮也会被点到。
+所以点面板按钮时底下的 UGUI 按钮**可能**也会被点到。
 
-处理：`UiInputGuard.Sync(panelVisible, enabled)` 每帧检查，
-面板可见就把 `EventSystem.current` 上的 `BaseInputModule` 置 `enabled = false`，关闭时恢复。
-切场景后 `EventSystem` 会换实例，所以要「发现换了就先还旧的、再拦新的」。
-设置页里给了开关（默认开），万一某个场景禁用输入模块会卡住，关掉即可。
+v0.3.x 的做法是面板可见期间把 `EventSystem.current` 上的 `BaseInputModule` 置
+`enabled = false`（`UiInputGuard`）。实测这个做法本身有问题：某些场景下禁用输入模块会让
+游戏 UI 卡住不动，开着面板反而更容易出状况。**v0.4.1 已整个删掉**（`UiInputGuard.cs`、
+`设置 → 交互` 卡片、`ClickGuard` 配置项一起移除），当作没这个功能。
+
+现在就是不管穿透：面板尽量开在屏幕空白处，或者关掉面板再点游戏 UI。
 
 ### 4.2 光标
 

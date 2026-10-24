@@ -21,7 +21,7 @@ namespace OneWayTicketsMod
     {
         public const string Guid = "onewaytickets.resedit";
         public const string PluginName = "再再启程 资源编辑";
-        public const string Version = "0.4.0";
+        public const string Version = "0.4.1";
 
         internal static Plugin Instance { get; private set; }
 
@@ -40,7 +40,6 @@ namespace OneWayTicketsMod
         internal static ConfigEntry<bool> NoComa;
         internal static ConfigEntry<bool> DeviceImmune;
         internal static ConfigEntry<bool> UseSystemFont;
-        internal static ConfigEntry<bool> ClickGuard;
 
         private Harmony _harmony;
         private PanelHost _host;
@@ -55,8 +54,6 @@ namespace OneWayTicketsMod
                 new ConfigDescription("整窗缩放（含文字），0.6 ~ 2.5", new AcceptableValueRange<float>(0.6f, 2.5f)));
             UseSystemFont = Config.Bind("界面", "使用系统中文字体", true,
                 "关掉会退回 Unity 内置字体，中文会变细变糊，一般不用关。");
-            ClickGuard = Config.Bind("界面", "面板打开时挡住游戏点击", true,
-                "面板是 IMGUI 覆盖层，不会自动拦住游戏的 UI 点击。开启后打开面板期间会临时禁用游戏的 UI 输入模块，避免点面板同时点到底下的按钮。");
 
             MaxValue = Config.Bind("通用", "一键满资源的目标值", 999999,
                 new ConfigDescription("「一键满资源」和「满」按钮写入的数值", new AcceptableValueRange<int>(1, 999999999)));
@@ -188,7 +185,7 @@ namespace OneWayTicketsMod
             _host.Panel = new MainPanel();
             _host.ToggleKey = () => ToggleKey.Value;
             _host.LogError = msg => Logger.LogError(msg);
-            // 每帧常驻逻辑：无限耐久 + 车速峰值记录 + 不晕车词缀同步 + 设备免疫轮询 + 面板打开时挡住游戏点击。
+            // 每帧常驻逻辑：无限耐久 + 车速峰值记录 + 不晕车词缀同步 + 设备免疫轮询。
             // 挂在宿主上而不是面板里，这样面板关着也照跑。
             _host.OnTick = () =>
             {
@@ -203,14 +200,11 @@ namespace OneWayTicketsMod
                 CubicleViewService.Tick();
                 // 「隐藏奇物表」：安全点的奇物窗口被游戏重建后要再藏一次
                 RelicWindowService.Tick();
-                UiInputGuard.Sync(_host.Panel != null && _host.Panel.Visible, ClickGuard.Value);
             };
         }
 
         private void OnDestroy()
         {
-            UiInputGuard.Restore();
-
             try
             {
                 _harmony?.UnpatchSelf();

@@ -1,5 +1,8 @@
 // =============================================================================
 // TabSettings.cs — 「设置」页签：快捷键、缩放、字体、奇物表显隐、目标值、诊断
+//
+// v0.4.1：删掉了「交互 → 面板打开时挡住游戏点击」（UiInputGuard）。
+// 那个开关默认就是关的，没人开它，留着只占版面。
 // =============================================================================
 
 using OneWayTicketsMod.Game;
@@ -15,7 +18,7 @@ namespace OneWayTicketsMod.UI
             BeginCard("按键");
             KeyBindRow("打开 / 关闭面板", Plugin.ToggleKey.Value,
                 key => Plugin.ToggleKey.Value = key, Plugin.ToggleKey,
-                "点一下右边的按钮，然后按下想用的键；按 Esc 取消。");
+                "点右边按钮再按想要的键，Esc 取消。");
             EndCard();
 
             BeginCard("数值");
@@ -40,7 +43,7 @@ namespace OneWayTicketsMod.UI
             }
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
-            Hint("所有「满」按钮和一键满资源都用这个数值。");
+            Hint("所有「满」按钮都用这个数值。");
             EndCard();
 
             BeginCard("显示");
@@ -51,9 +54,7 @@ namespace OneWayTicketsMod.UI
                 Notify(font ? "已切换为系统字体" : "已切回 Unity 内置字体");
             }
             Info($"当前字体：{PanelTheme.FontName}");
-            Hint("面板缩放用左下角的 － / ＋ 调整，会自动记住。");
 
-            // v0.3.0：安全点左侧那面奇物墙（RelicMgrWindowView）纯展示，关掉不影响奇物生效
             bool hideRelic = ToggleChip(Plugin.HideRelicWindow.Value, "隐藏安全点的奇物表");
             if (hideRelic != Plugin.HideRelicWindow.Value)
             {
@@ -61,19 +62,7 @@ namespace OneWayTicketsMod.UI
                 Notify(hideRelic ? "已隐藏：奇物墙不再挡住安全点界面" : "已恢复显示奇物墙", 3.5f);
             }
             Info(RelicWindowService.Diagnose());
-            Hint("「奇物表」是进安全点时贴在屏幕边上的那面奇物墙，奇物越多铺得越宽，会把背景和按钮挡住。");
-            Hint("只是把窗口藏起来，奇物本身的效果、数量、存档都不受影响；关掉开关立刻恢复显示。");
-            EndCard();
-
-            BeginCard("交互");
-            bool guard = ToggleChip(Plugin.ClickGuard.Value, "面板打开时挡住游戏点击");
-            if (guard != Plugin.ClickGuard.Value)
-            {
-                Plugin.ClickGuard.Value = guard;
-                Notify(guard ? "已开启点击拦截" : "已关闭点击拦截（点面板会同时点到底下的游戏按钮）");
-            }
-            Hint("面板是 IMGUI 覆盖层，默认不会拦住游戏的 UI 点击。开启后会临时禁用游戏的 UI 输入模块。");
-            Hint("如果发现开着面板时游戏 UI 卡住不动，把它关掉即可。");
+            Hint("只是把安全点边上那面奇物墙藏起来，奇物效果和数量都不受影响。");
             EndCard();
 
             BeginCard("工位显示");
@@ -91,12 +80,7 @@ namespace OneWayTicketsMod.UI
                 Notify(CubicleViewService.Dump(), 4f);
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
-            Hint("「工位格子」要能放人得同时满足三层：设备有工位数据 → 格子和工位绑上 → 格子是激活的。");
-            Hint("任何一层断了，表现都是「空占位框 / 点上去没反应」。开启后每秒扫一遍，缺哪层补哪层。");
-            Hint("「已扫 N 轮」是每秒一次的只读检查（只读 activeSelf / owner，不改任何东西）；");
-            Hint("后面括号里的「累计修补 M 项」才是真正改动过的数量，一直是 0 就说明本来就一切正常。");
-            Hint("「一键上工位」和「自动补满空工位」已挪到「旅人」页（它安排的是旅人，放在那边更好找）。");
-            Hint("排不上人时点「写诊断到日志」后把 LogOutput.log 里 [工位诊断] 的行发我。");
+            Hint("格子点不开 / 点上去没反应时开这个，每秒自动补齐；排不上人就把日志里的 [工位诊断] 发我。");
             EndCard();
 
             BeginCard("诊断");
@@ -113,7 +97,6 @@ namespace OneWayTicketsMod.UI
             KV("车速锁定", CaravanSpeedService.LockEnabled
                 ? $"开启中（{CaravanSpeedService.LockTarget:0.0}）"
                 : "关闭", 110f);
-            Hint("全部显示「未就绪」时，先确认游戏已完全进入（营地或探索场景）。");
             EndCard();
         }
 
