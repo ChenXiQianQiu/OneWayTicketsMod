@@ -21,7 +21,7 @@ namespace OneWayTicketsMod
     {
         public const string Guid = "onewaytickets.resedit";
         public const string PluginName = "再再启程 资源编辑";
-        public const string Version = "0.3.0";
+        public const string Version = "0.4.0";
 
         internal static Plugin Instance { get; private set; }
 

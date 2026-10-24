@@ -41,6 +41,7 @@ namespace OneWayTicketsMod.UI
         private bool _showAllCoins;
         private Vector2 _coinScroll;
         private Vector2 _teamScroll;
+        private Vector2 _partnerScroll;
         private Vector2 _deviceScroll;
 
         /// <summary>把所有输入框恢复成游戏当前值。</summary>
