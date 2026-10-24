@@ -7,7 +7,7 @@
 ├── AGENTS.md                       # 项目约定（必读）
 ├── src/OneWayTicketsMod/           # Mod 工程（本仓库唯一的 Mod）
 │   ├── OneWayTicketsMod.csproj
-│   ├── version.txt                 # 0.2.5，改版本必须同步 Plugin.Version
+│   ├── version.txt                 # 0.2.6，改版本必须同步 Plugin.Version
 │   ├── Plugin.cs                   # BepInEx 入口：配置 + 补丁 + 宿主装配
 │   ├── Game/                       # 业务层（不依赖 UI）
 │   │   ├── SingletonAccess.cs      # 反射读 m_instance，绝不 new
@@ -15,6 +15,7 @@
 │   │   ├── WorldService.cs         # 局内金币 / 车辆耐久 / 无限耐久
 │   │   ├── CaravanSpeedService.cs  # 车速读取 / 直接设置 / 锁定
 │   │   ├── TeamService.cs          # 旅人列表 + 解除操作中人数上限
+│   │   ├── CubicleViewService.cs   # 工位格子常显（修进战斗后工位消失）
 │   │   ├── CharacterGuardService.cs# 旅人不会晕车 + 全部唤醒
 │   │   └── DeviceGuardService.cs   # 设备免疫异常 + 清除异常 + 设备列表
 │   ├── Patches/                    # 一个补丁只解决一件事（本作不执行，见旅人模块说明第 3 节）

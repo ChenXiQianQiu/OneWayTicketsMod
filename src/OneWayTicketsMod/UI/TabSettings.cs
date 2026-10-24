@@ -65,6 +65,25 @@ namespace OneWayTicketsMod.UI
             Hint("如果发现开着面板时游戏 UI 卡住不动，把它关掉即可。");
             EndCard();
 
+            BeginCard("工位显示");
+            bool cubicleShow = ToggleChip(Plugin.CubicleAlwaysShow.Value, "工位格子常显（进战斗后新设备也能放人）");
+            if (cubicleShow != Plugin.CubicleAlwaysShow.Value)
+            {
+                Plugin.CubicleAlwaysShow.Value = cubicleShow;
+                Notify(cubicleShow ? "已开启：工位格子会一直显示" : "已关闭：恢复游戏原本的解锁逻辑", 3.5f);
+            }
+            GUILayout.BeginHorizontal();
+            Caption("当前", 40f);
+            GUILayout.Label(CubicleViewService.Diagnose(), PanelTheme.Sub);
+            if (Btn("立即修复", 66f, PanelTheme.Mini, 20f))
+                Notify(CubicleViewService.RepairNow(), 4f);
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+            Hint("游戏用 BattleContext.active_cubicle 控制工位格子显不显示，它只在解锁工位科技那一刻置 true，");
+            Hint("而每次换场景 / 进战斗 BattleContext.Init() 都会把它清成 false —— 于是之后新装 / 换上的设备");
+            Hint("（例如转轮机枪）格子会被直接关掉，只剩空占位框、点也没反应。开启后每秒把科技那两行重跑一遍。");
+            EndCard();
+
             BeginCard("诊断");
             KV("Mod 版本", $"{Plugin.PluginName} v{Plugin.Version}", 110f);
             KV("CommonContext", CampCoinService.Ready ? "已就绪" : "未创建（还没进营地）", 110f);

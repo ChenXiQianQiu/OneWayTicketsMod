@@ -21,7 +21,7 @@ namespace OneWayTicketsMod
     {
         public const string Guid = "onewaytickets.resedit";
         public const string PluginName = "再再启程 资源编辑";
-        public const string Version = "0.2.5";
+        public const string Version = "0.2.6";
 
         internal static Plugin Instance { get; private set; }
 
@@ -34,6 +34,7 @@ namespace OneWayTicketsMod
         internal static ConfigEntry<float> PanelScale;
         internal static ConfigEntry<int> MaxValue;
         internal static ConfigEntry<bool> UnlockFrontLimit;
+        internal static ConfigEntry<bool> CubicleAlwaysShow;
         internal static ConfigEntry<bool> NoComa;
         internal static ConfigEntry<bool> DeviceImmune;
         internal static ConfigEntry<bool> UseSystemFont;
@@ -64,6 +65,12 @@ namespace OneWayTicketsMod
                 + "于是游戏自己的「点人头像 → 点工位」流程对所有人都生效，不依赖补丁。"
                 + "读档 / 换局后会自动重新拉满；手动点「换下」的人会留在休息区。改动立即生效，不用重启。");
 
+            CubicleAlwaysShow = Config.Bind("功能", "工位格子常显", true,
+                "游戏用 BattleContext.active_cubicle 控制「工位格子显不显示」，它只在解锁工位科技那一刻置 true，"
+                + "而每次换场景 / 进战斗 BattleContext.Init() 都会把它清成 false。"
+                + "结果就是之后新装 / 换上的设备（比如转轮机枪）工位格子直接被关掉，变成空占位框、点也没反应。"
+                + "开启后每秒把科技那两行重新执行一遍（active_cubicle = true + 让设备重新显示站位），只影响格子显不显示。");
+
             NoComa = Config.Bind("功能", "旅人不会晕车", false,
                 "开启后给每个旅人补一份「油门焊死」词缀（免疫冲击昏迷），车辆颠簸、设备受击的震动都不再让旅人晕倒。改动立即生效，不用重启。");
 
@@ -73,8 +80,15 @@ namespace OneWayTicketsMod
             PanelTheme.Log = msg => Logger.LogInfo(msg);
             PanelTheme.UseSystemFont = UseSystemFont.Value;
             TeamService.UnlockFrontLimit = UnlockFrontLimit.Value;
+            CubicleViewService.ForceVisible = CubicleAlwaysShow.Value;
             CharacterGuardService.SetEnabled(NoComa.Value);
             DeviceGuardService.SetEnabled(DeviceImmune.Value);
+
+            CubicleAlwaysShow.SettingChanged += (_, __) =>
+            {
+                CubicleViewService.ForceVisible = CubicleAlwaysShow.Value;
+                Logger.LogInfo($"工位格子常显：{(CubicleAlwaysShow.Value ? "已开启" : "已关闭")}");
+            };
 
             UnlockFrontLimit.SettingChanged += (_, __) =>
             {
@@ -152,6 +166,8 @@ namespace OneWayTicketsMod
                 CampCoinService.Tick();
                 // 解除操作中人数上限后，读档 / 招募 / 换局都要把休息区的人自动拉回操作中
                 TeamService.Tick();
+                // 换场景 / 进战斗后游戏会把 active_cubicle 清掉，导致新设备的工位格子不显示
+                CubicleViewService.Tick();
                 UiInputGuard.Sync(_host.Panel != null && _host.Panel.Visible, ClickGuard.Value);
             };
         }
