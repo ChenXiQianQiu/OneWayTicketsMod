@@ -71,8 +71,14 @@ namespace OneWayTicketsMod.UI
             KV("Mission", SingletonAccess.Get<Foundations.Mission>() != null ? "已就绪" : "未创建（不在局内）", 110f);
             KV("BackPackMgr", WorldService.BackPack != null ? "已就绪" : "不在局内", 110f);
             KV("CharacterMgr", TeamService.Ready ? "已就绪" : "不在局内", 110f);
+            KV("DeviceMgr", DeviceGuardService.Ready ? "已就绪" : "不在局内", 110f);
             KV("WorldContext", WorldService.Ctx != null ? "已就绪" : "不在局内", 110f);
             KV("无限耐久", WorldService.InfiniteDurability ? "开启中" : "关闭", 110f);
+            KV("不会晕车", CharacterGuardService.NoComaEnabled ? "开启中" : "关闭", 110f);
+            KV("设备免疫异常", DeviceGuardService.ImmuneEnabled ? "开启中" : "关闭", 110f);
+            KV("车速锁定", CaravanSpeedService.LockEnabled
+                ? $"开启中（{CaravanSpeedService.LockTarget:0.0}）"
+                : "关闭", 110f);
             Hint("全部显示「未就绪」时，先确认游戏已完全进入（营地或探索场景）。");
             EndCard();
         }

@@ -16,7 +16,7 @@ namespace OneWayTicketsMod.UI
     {
         protected override string Title => $"再再启程 资源编辑 v{Plugin.Version}";
         protected override string TitleNote => "（免费分享，禁止盗卖）";
-        protected override string[] TabLabels => new[] { "概览", "营地资源", "局内", "旅人", "设置" };
+        protected override string[] TabLabels => new[] { "概览", "营地资源", "局内", "旅人", "设备", "设置" };
         protected override int WindowId => 61701;
 
         protected override float DefaultWidth => 740f;
@@ -35,11 +35,13 @@ namespace OneWayTicketsMod.UI
         private string _missionCoinBuf = string.Empty;
         private string _hpBuf = string.Empty;
         private string _hpMaxBuf = string.Empty;
+        private string _speedBuf = string.Empty;
         private string _coinSearch = string.Empty;
 
         private bool _showAllCoins;
         private Vector2 _coinScroll;
         private Vector2 _teamScroll;
+        private Vector2 _deviceScroll;
 
         /// <summary>把所有输入框恢复成游戏当前值。</summary>
         private void ResetBuffers()
@@ -48,6 +50,7 @@ namespace OneWayTicketsMod.UI
             _missionCoinBuf = string.Empty;
             _hpBuf = string.Empty;
             _hpMaxBuf = string.Empty;
+            _speedBuf = string.Empty;
         }
 
         protected override void OnOpen() => ResetBuffers();
@@ -60,7 +63,8 @@ namespace OneWayTicketsMod.UI
                 case 1: DrawCampTab(); break;
                 case 2: DrawWorldTab(); break;
                 case 3: DrawTeamTab(); break;
-                case 4: DrawSettingsTab(); break;
+                case 4: DrawDeviceTab(); break;
+                case 5: DrawSettingsTab(); break;
             }
         }
 
@@ -78,6 +82,7 @@ namespace OneWayTicketsMod.UI
             StatusChip("营地币", CampCoinService.Ready ? $"{owned} 项" : "未就绪");
             StatusChip("局内金币", WorldService.TryGetCoin(out var coin) ? coin.ToString() : "—");
             StatusChip("车辆耐久", WorldService.TryGetCaravan(out var hp, out var hpMax) ? $"{hp}/{hpMax}" : "—");
+            StatusChip("车速", CaravanSpeedService.TryGetSpeed(out var speed) ? speed.ToString("0.0") : "—");
             StatusChip("旅人", TeamService.Ready ? $"{TeamService.FrontCount} + {TeamService.BackupCount}" : "—");
 
             GUILayout.FlexibleSpace();
@@ -138,9 +143,14 @@ namespace OneWayTicketsMod.UI
             KV("车辆耐久", WorldService.TryGetCaravan(out var hp, out var hpMax)
                 ? $"{hp:N0} / {hpMax:N0}"
                 : "不在局内", 88f);
+            KV("车速", CaravanSpeedService.TryGetSpeed(out var speed)
+                ? $"{speed:0.0}"
+                : "不在局内", 88f);
             KV("旅人", TeamService.Ready
                 ? $"操作中 {TeamService.FrontCount} 人 · 休息区 {TeamService.BackupCount} 人"
                 : "不在局内", 88f);
+            KV("昏迷旅人", TeamService.Ready ? $"{CharacterGuardService.ComaCount()} 人" : "不在局内", 88f);
+            KV("异常设备", DeviceGuardService.Ready ? $"{DeviceGuardService.AbnormalCount()} 台" : "不在局内", 88f);
             Hint("数值实时读取自游戏对象，不写死地址，重开游戏也不会失效。");
             EndCard();
         }

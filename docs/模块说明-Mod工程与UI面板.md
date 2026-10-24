@@ -7,15 +7,21 @@
 ├── AGENTS.md                       # 项目约定（必读）
 ├── src/OneWayTicketsMod/           # Mod 工程（本仓库唯一的 Mod）
 │   ├── OneWayTicketsMod.csproj
-│   ├── version.txt                 # 0.1.0，改版本必须同步 Plugin.Version
+│   ├── version.txt                 # 0.2.0，改版本必须同步 Plugin.Version
 │   ├── Plugin.cs                   # BepInEx 入口：配置 + 补丁 + 宿主装配
 │   ├── Game/                       # 业务层（不依赖 UI）
 │   │   ├── SingletonAccess.cs      # 反射读 m_instance，绝不 new
 │   │   ├── CampCoinService.cs      # 营地币读写 + HUD 刷新
 │   │   ├── WorldService.cs         # 局内金币 / 车辆耐久 / 无限耐久
-│   │   └── TeamService.cs          # 旅人列表 + 休息区开关
-│   ├── Patches/
-│   │   └── CharacterHelperPatch.cs # 唯一一个 Harmony 补丁
+│   │   ├── CaravanSpeedService.cs  # 车速读取 / 直接设置 / 锁定
+│   │   ├── TeamService.cs          # 旅人列表 + 休息区开关
+│   │   ├── CharacterGuardService.cs# 旅人不会晕车 + 全部唤醒
+│   │   └── DeviceGuardService.cs   # 设备免疫异常 + 清除异常 + 设备列表
+│   ├── Patches/                    # 一个补丁只解决一件事
+│   │   ├── CharacterHelperPatch.cs # 休息区旅人可上工位（GetAllCharacters 后置）
+│   │   ├── CharacterShockPatch.cs  # 旅人不会晕车（ApplyShockForce 前置）
+│   │   ├── DeviceOutlierPatch.cs   # 设备免疫异常（applied_outlier 前置，TargetMethod 反射）
+│   │   └── CaravanSpeedPatch.cs    # 锁定车速（CaravanMover.move 后置）
 │   └── UI/
 │       ├── PanelTheme.cs           # 配色 / 圆角九宫格纹理 / 系统中文字体 / 全套 GUIStyle
 │       ├── PanelWidgets.cs         # 卡片、KV 行、按钮、输入框、限高滚动
@@ -24,12 +30,14 @@
 │       ├── UiInputGuard.cs         # 面板可见时禁用游戏 UI 输入模块（防点击穿透）
 │       ├── MainPanel.cs            # 面板外壳 + 概览页
 │       ├── TabCamp.cs              # 营地资源页
-│       ├── TabWorld.cs             # 局内页
-│       ├── TabTeam.cs              # 旅人页
+│       ├── TabWorld.cs             # 局内页（金币 / 耐久 / 车速）
+│       ├── TabTeam.cs              # 旅人页（不晕车 / 休息区上工位 / 列表）
+│       ├── TabDevice.cs            # 设备页（免疫异常 / 设备列表）
 │       └── TabSettings.cs          # 设置页
 ├── docs/                           # 反编译索引 + 各模块说明
 ├── share/Mod修改内容说明.md         # 面向玩家/分享包的功能说明（必须手动维护）
-├── _work/                          # CE 时代的生成脚本与离线测试（CT 表来源）
+├── _work/                          # CE 时代的生成脚本与离线测试 + 验证用小工具
+│   └── screen_tool.py              # 截图 / SendInput 点击，纯 ctypes，不依赖 Pillow
 ├── 再再启程 资源编辑表.CT          # CE 表（已被本 Mod 取代，留档）
 └── Decompiled/                     # 反编译产物，不提交
 ```
@@ -111,15 +119,28 @@ Mod 在菜单界面访问就会造出假单例。统一走 `SingletonAccess.Get<
 
 ## 5. 验证方法
 
-游戏是 2560×1440 无边框全屏，可以用脚本做半自动回归（仅本地临时用，不提交）：
+游戏是 2560×1440 无边框全屏。`_work/screen_tool.py` 把整套动作都做成了命令行，
+只用 `ctypes`（不依赖 Pillow / pyautogui），也绕开了 PowerShell 对 `Add-Type` 的安全限制：
 
-1. 启动游戏，等主菜单；
-2. `EnumWindows` 找到标题含「再再启程」的窗口，`SetForegroundWindow`；
-3. `keybd_event(VK_F1)` 开关面板；`SendInput`（**不是** `mouse_event`，后者常被忽略）点击按钮；
-4. `ImageGrab.grab(窗口 rect)` 截图，再裁左上角 820×640 看面板。
+```bash
+P="C:/Users/chen/.workbuddy-ai/binaries/python/versions/3.13.12/python.exe"
+$P _work/screen_tool.py shot /tmp/a.png             # 全屏截图
+$P _work/screen_tool.py shot /tmp/a.png 0 0 860 680 # 只截左上角（1:1，方便量坐标）
+$P _work/screen_tool.py click 60 200                # SendInput 绝对坐标点击
+$P _work/screen_tool.py key 112                     # 112 = VK_F1
+```
 
-已用这个方法验证过：面板渲染、页签切换、营地币读值、点「满」写入 999999、
-以及**游戏自己左上角资源栏同步刷新**（这一步能证明写入真的进了 `CommonContext`）。
+流程：
+
+1. 启动游戏（**必须用 `run_in_background`**，否则 shell 退出会把游戏进程一起带走）；
+2. 等约 25 秒到主菜单，先点一下画面空白处让窗口拿到焦点（不点的话 F1 收不到）；
+3. `key 112` 开关面板；点左侧导航切页签；
+4. `shot ... 0 0 860 680` 截图看面板。
+
+已验证（v0.2.0）：4 个补丁全部挂载成功（见 `BepInEx/LogOutput.log`）、
+面板 6 个页签都能正常渲染、新增的「旅人 / 设备 / 车辆速度」三块卡片布局正确。
+「车辆速度」卡片在不进局时会被 `InWorld` 判断挡住，验证时临时把该判断改成 `false`
+截了一张图确认布局，**验证完必须改回来**（别忘了重新编译部署）。
 
 ## 6. 版本管理
 

@@ -21,7 +21,7 @@ namespace OneWayTicketsMod
     {
         public const string Guid = "onewaytickets.resedit";
         public const string PluginName = "再再启程 资源编辑";
-        public const string Version = "0.1.0";
+        public const string Version = "0.2.0";
 
         internal static Plugin Instance { get; private set; }
 
@@ -29,6 +29,8 @@ namespace OneWayTicketsMod
         internal static ConfigEntry<float> PanelScale;
         internal static ConfigEntry<int> MaxValue;
         internal static ConfigEntry<bool> RestCharacterEnabled;
+        internal static ConfigEntry<bool> NoComa;
+        internal static ConfigEntry<bool> DeviceImmune;
         internal static ConfigEntry<bool> UseSystemFont;
         internal static ConfigEntry<bool> ClickGuard;
 
@@ -54,14 +56,34 @@ namespace OneWayTicketsMod
             RestCharacterEnabled = Config.Bind("功能", "休息区旅人也能上工位", false,
                 "开启后，后备队（休息区）的旅人也能被选中并拖到工位上工作。改动立即生效，不用重启。");
 
+            NoComa = Config.Bind("功能", "旅人不会晕车", false,
+                "开启后旅人免疫冲击昏迷（车辆颠簸、设备受击的震动都不再让旅人晕倒）。改动立即生效，不用重启。");
+
+            DeviceImmune = Config.Bind("功能", "设备免疫异常状态", false,
+                "开启后车上设备不会被点燃 / 机械故障 / 腐蚀 / 缠绕 / 打湿。只免疫异常状态，普通掉血仍然生效。");
+
             PanelTheme.Log = msg => Logger.LogInfo(msg);
             PanelTheme.UseSystemFont = UseSystemFont.Value;
             TeamService.RestToFrontEnabled = RestCharacterEnabled.Value;
+            CharacterGuardService.NoComaEnabled = NoComa.Value;
+            DeviceGuardService.ImmuneEnabled = DeviceImmune.Value;
 
             RestCharacterEnabled.SettingChanged += (_, __) =>
             {
                 TeamService.RestToFrontEnabled = RestCharacterEnabled.Value;
                 Logger.LogInfo($"休息区旅人可上工位：{(RestCharacterEnabled.Value ? "已开启" : "已关闭")}");
+            };
+
+            NoComa.SettingChanged += (_, __) =>
+            {
+                CharacterGuardService.NoComaEnabled = NoComa.Value;
+                Logger.LogInfo($"旅人不会晕车：{(NoComa.Value ? "已开启" : "已关闭")}");
+            };
+
+            DeviceImmune.SettingChanged += (_, __) =>
+            {
+                DeviceGuardService.ImmuneEnabled = DeviceImmune.Value;
+                Logger.LogInfo($"设备免疫异常状态：{(DeviceImmune.Value ? "已开启" : "已关闭")}");
             };
 
             UseSystemFont.SettingChanged += (_, __) =>
@@ -71,18 +93,34 @@ namespace OneWayTicketsMod
             };
 
             _harmony = new Harmony(Guid);
-            try
-            {
-                _harmony.PatchAll(typeof(CharacterHelperPatch));
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError("Harmony 补丁挂载失败，旅人功能将不可用：" + ex);
-            }
+
+            // 逐个补丁类单独挂载：某个补丁点因游戏更新失效时，
+            // 只影响它自己，不会连带其它功能一起不可用。
+            PatchAll(typeof(CharacterHelperPatch),
+                     typeof(CharacterShockPatch),
+                     typeof(DeviceOutlierPatch),
+                     typeof(CaravanSpeedPatch));
 
             CreateHost();
 
             Logger.LogInfo($"{PluginName} v{Version} 已加载，按 {ToggleKey.Value} 打开面板。");
+        }
+
+        /// <summary>逐个挂载补丁，单个失败只记录不影响其它。</summary>
+        private void PatchAll(params Type[] patchTypes)
+        {
+            foreach (var type in patchTypes)
+            {
+                try
+                {
+                    _harmony.PatchAll(type);
+                    Logger.LogInfo($"补丁已挂载：{type.Name}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError($"补丁 {type.Name} 挂载失败，对应功能不可用：{ex.Message}");
+                }
+            }
         }
 
         private void CreateHost()
@@ -95,11 +133,12 @@ namespace OneWayTicketsMod
             _host.Panel = new MainPanel();
             _host.ToggleKey = () => ToggleKey.Value;
             _host.LogError = msg => Logger.LogError(msg);
-            // 每帧常驻逻辑：无限耐久 + 面板打开时挡住游戏点击。
+            // 每帧常驻逻辑：无限耐久 + 车速峰值记录 + 面板打开时挡住游戏点击。
             // 挂在宿主上而不是面板里，这样面板关着也照跑。
             _host.OnTick = () =>
             {
                 WorldService.Tick();
+                CaravanSpeedService.Tick();
                 CampCoinService.Tick();
                 UiInputGuard.Sync(_host.Panel != null && _host.Panel.Visible, ClickGuard.Value);
             };

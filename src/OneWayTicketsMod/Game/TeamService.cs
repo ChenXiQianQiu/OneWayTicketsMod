@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using Commons;
 using World.Characters;
+using World.Characters.CharacterStates;
 
 namespace OneWayTicketsMod.Game
 {
@@ -80,7 +81,11 @@ namespace OneWayTicketsMod.Game
             string state = "正常";
             try
             {
-                if (c.state != null) state = c.state.GetType().Name;
+                // state 为 null 就是正常；目前游戏里只有昏迷与亢奋两种状态类，
+                // 其余（万一后续新增）就退回去显示类名，至少不会误报成「正常」。
+                if (c.state is Coma) state = "昏迷";
+                else if (c.state is Galvanized) state = "亢奋";
+                else if (c.state != null) state = c.state.GetType().Name;
             }
             catch
             {
