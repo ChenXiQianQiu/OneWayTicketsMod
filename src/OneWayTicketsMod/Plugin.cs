@@ -21,7 +21,7 @@ namespace OneWayTicketsMod
     {
         public const string Guid = "onewaytickets.resedit";
         public const string PluginName = "再再启程 资源编辑";
-        public const string Version = "0.2.9";
+        public const string Version = "0.3.0";
 
         internal static Plugin Instance { get; private set; }
 
@@ -35,6 +35,8 @@ namespace OneWayTicketsMod
         internal static ConfigEntry<int> MaxValue;
         internal static ConfigEntry<bool> UnlockFrontLimit;
         internal static ConfigEntry<bool> CubicleAlwaysShow;
+        internal static ConfigEntry<bool> AutoFillCubicle;
+        internal static ConfigEntry<bool> HideRelicWindow;
         internal static ConfigEntry<bool> NoComa;
         internal static ConfigEntry<bool> DeviceImmune;
         internal static ConfigEntry<bool> UseSystemFont;
@@ -74,6 +76,18 @@ namespace OneWayTicketsMod
             NoComa = Config.Bind("功能", "旅人不会晕车", false,
                 "开启后给每个旅人补一份「油门焊死」词缀（免疫冲击昏迷），车辆颠簸、设备受击的震动都不再让旅人晕倒。改动立即生效，不用重启。");
 
+            AutoFillCubicle = Config.Bind("功能", "自动补满空工位", false,
+                "开启后每 2 秒检查一次：车上只要有空工位、而「操作中」还有空闲旅人，就自动把人安排上去。"
+                + "走的是和玩家手点格子完全相同的入口（Cubicle_Helper.SetSelectCharacter + SetCubicle）。"
+                + "你正在游戏里手动点选旅人时（选中状态没清）会自动跳过这一轮，不会把你选好的人抢走。"
+                + "面板「旅人」页也能随时开关。");
+
+            HideRelicWindow = Config.Bind("功能", "隐藏安全点的奇物表", false,
+                "「奇物表」是进安全点（撤离界面）时贴在屏幕边上的那面奇物墙（RelicMgrWindowView），"
+                + "奇物越多铺得越宽，会把背景和撤离按钮挡住。开启后把那个窗口隐藏起来。"
+                + "纯显示层操作，奇物本身的效果、数量、存档都不受影响；换场景重建窗口时会自动再藏一次。"
+                + "面板「设置 → 显示」里也能随时开关。");
+
             DeviceImmune = Config.Bind("功能", "设备免疫异常状态", false,
                 "开启后车上设备不会被点燃 / 机械故障 / 腐蚀 / 缠绕 / 打湿。"
                 + "做法是每 0.1 秒检查一次，一发现异常就调游戏自己的清理逻辑（Device.EnterSafeArea）"
@@ -86,8 +100,22 @@ namespace OneWayTicketsMod
             PanelTheme.UseSystemFont = UseSystemFont.Value;
             TeamService.UnlockFrontLimit = UnlockFrontLimit.Value;
             CubicleViewService.ForceVisible = CubicleAlwaysShow.Value;
+            CubicleViewService.AutoFillEnabled = AutoFillCubicle.Value;
+            RelicWindowService.Hidden = HideRelicWindow.Value;
             CharacterGuardService.SetEnabled(NoComa.Value);
             DeviceGuardService.SetEnabled(DeviceImmune.Value);
+
+            AutoFillCubicle.SettingChanged += (_, __) =>
+            {
+                CubicleViewService.AutoFillEnabled = AutoFillCubicle.Value;
+                Logger.LogInfo($"自动补满空工位：{(AutoFillCubicle.Value ? "已开启" : "已关闭")}");
+            };
+
+            HideRelicWindow.SettingChanged += (_, __) =>
+            {
+                RelicWindowService.SetHidden(HideRelicWindow.Value);
+                Logger.LogInfo($"隐藏奇物表：{(HideRelicWindow.Value ? "已开启" : "已关闭")}");
+            };
 
             CubicleAlwaysShow.SettingChanged += (_, __) =>
             {
@@ -173,6 +201,8 @@ namespace OneWayTicketsMod
                 TeamService.Tick();
                 // 换场景 / 进战斗后游戏会把 active_cubicle 清掉，导致新设备的工位格子不显示
                 CubicleViewService.Tick();
+                // 「隐藏奇物表」：安全点的奇物窗口被游戏重建后要再藏一次
+                RelicWindowService.Tick();
                 UiInputGuard.Sync(_host.Panel != null && _host.Panel.Visible, ClickGuard.Value);
             };
         }

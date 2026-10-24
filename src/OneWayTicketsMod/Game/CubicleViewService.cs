@@ -64,6 +64,9 @@ namespace OneWayTicketsMod.Game
         /// <summary>「工位格子常显」总开关（面板「设置」页可关）。</summary>
         public static bool ForceVisible;
 
+        /// <summary>「自动补满空工位」总开关（面板「旅人」页可关）。</summary>
+        public static bool AutoFillEnabled;
+
         /// <summary>最近一次修复的统计，面板上显示用。</summary>
         public struct RepairStats
         {
@@ -93,6 +96,9 @@ namespace OneWayTicketsMod.Game
 
         public static void Tick()
         {
+            // 自动补位独立于「工位格子常显」：那个开关只管显示层，这个只管排人
+            TickAutoFill();
+
             if (!ForceVisible) return;
 
             float now = Time.realtimeSinceStartup;
@@ -249,28 +255,71 @@ namespace OneWayTicketsMod.Game
             return added;
         }
 
-        // ------------------------------------------------------------ 一键上工位
+        // ------------------------------------------------------------ 一键上工位 / 自动补位
+
+        private static float _nextAuto;
+
+        /// <summary>「一键上工位」按钮：跑一次并把结果写成一句人话。</summary>
+        public static string FillAll() => FillCore(false, out _);
+
+        /// <summary>
+        /// 自动补位（面板「旅人」页的开关）：每 2 秒跑一次，没人可安排就静默返回 0。
+        ///
+        /// 一个必要的保护：如果玩家正在用游戏自己的流程手动点选旅人
+        /// （Cubicle_Helper.GetSelectCharacter() 不为空），这一轮直接跳过 ——
+        /// 否则自动补位会把玩家选好的人抢去别的工位。
+        /// </summary>
+        public static int AutoFill()
+        {
+            if (Cubicle_Helper.GetSelectCharacter() != null) return 0;
+
+            FillCore(true, out int placed);
+            if (placed > 0) Plugin.LogInfo($"[自动工位] 已自动安排 {placed} 人上工位。");
+            return placed;
+        }
+
+        private static void TickAutoFill()
+        {
+            if (!AutoFillEnabled) return;
+
+            float now = Time.realtimeSinceStartup;
+            if (now < _nextAuto) return;
+            _nextAuto = now + 2f;
+
+            try
+            {
+                AutoFill();
+            }
+            catch (System.Exception ex)
+            {
+                Plugin.LogWarn("自动补位出错：" + ex.Message);
+            }
+        }
 
         /// <summary>
         /// 把前排空闲旅人自动安排到车上的空工位。
         ///
-        /// 用途有两个：
+        /// 用途有三个：
         ///   1. 真正的功能——不想一个个点的时候一键铺满；
-        ///   2. 诊断——它走的是和「玩家点格子」完全相同的入口
+        ///   2. 自动补位——开关打开后每 2 秒兜一次底；
+        ///   3. 诊断——它走的是和「玩家点格子」完全相同的入口
         ///      （Cubicle_Helper.SetSelectCharacter + SetCubicle），
         ///      如果这里能安排上人而手点不行，问题就在 UI 点击层（格子没激活 / 被别的界面挡住），
         ///      如果这里也安排不上，问题在数据层（没工位 / 没绑定 / 旅人状态不允许）。
         ///
         /// 只遍历 mgr.slots_device —— 也就是真的装在车上的设备，
         /// 不会像 v0.2.5 删掉的「工位分配」那样把旅人塞进已经不在车上的历史设备。
+        /// quiet = true 时不返回给人看的提示（自动补位用）。
         /// </summary>
-        public static string FillAll()
+        private static string FillCore(bool quiet, out int placed)
         {
+            placed = 0;
+
             var mgr = Mgr;
-            if (mgr == null) return "不在局内，读不到设备管理器。";
+            if (mgr == null) return quiet ? null : "不在局内，读不到设备管理器。";
 
             var charMgr = SingletonAccess.Mgr<World.Characters.CharacterMgr>("CharacterMgr");
-            if (charMgr == null) return "读不到旅人管理器。";
+            if (charMgr == null) return quiet ? null : "读不到旅人管理器。";
 
             var empty = new List<BasicCubicle>();
             int deviceCount = 0;
@@ -282,8 +331,9 @@ namespace OneWayTicketsMod.Game
                     if (cub != null && cub.worker == null) empty.Add(cub);
             }
 
-            if (deviceCount == 0) return "车上没有设备。";
-            if (empty.Count == 0) return $"车上 {deviceCount} 台设备都没有空工位（或者压根没工位数据）。";
+            if (deviceCount == 0) return quiet ? null : "车上没有设备。";
+            if (empty.Count == 0)
+                return quiet ? null : $"车上 {deviceCount} 台设备都没有空工位（或者压根没工位数据）。";
 
             var idle = new List<World.Characters.Character>();
             if (charMgr.characters != null)
@@ -297,18 +347,19 @@ namespace OneWayTicketsMod.Game
                 }
             }
 
-            if (idle.Count == 0) return $"空工位 {empty.Count} 个，但操作中没有空闲旅人。";
+            if (idle.Count == 0)
+                return quiet ? null : $"空工位 {empty.Count} 个，但操作中没有空闲旅人。";
 
-            int placed = 0;
-            for (int i = 0; i < empty.Count && placed < idle.Count; i++)
+            int ok = 0;
+            for (int i = 0; i < empty.Count && ok < idle.Count; i++)
             {
                 var cub = empty[i];
-                var who = idle[placed];
+                var who = idle[ok];
                 try
                 {
                     Cubicle_Helper.SetSelectCharacter(who);
                     Cubicle_Helper.SetCubicle(cub);
-                    if (cub.worker != null) placed++;
+                    if (cub.worker != null) ok++;
                     else Cubicle_Helper.SetSelectCharacter(null);
                 }
                 catch (System.Exception ex)
@@ -318,10 +369,13 @@ namespace OneWayTicketsMod.Game
                 }
             }
 
-            if (placed == 0)
+            placed = ok;
+
+            if (quiet) return null;
+            if (ok == 0)
                 return $"空工位 {empty.Count} 个、空闲旅人 {idle.Count} 人，但一个都没安排上——说明卡在数据/状态层，点「写诊断到日志」发我看。";
 
-            return $"已安排 {placed} 人上工位（空工位 {empty.Count} 个 · 空闲旅人 {idle.Count} 人）。";
+            return $"已安排 {ok} 人上工位（空工位 {empty.Count} 个 · 空闲旅人 {idle.Count} 人）。";
         }
 
         // ------------------------------------------------------------ 诊断

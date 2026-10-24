@@ -1,5 +1,5 @@
 // =============================================================================
-// TabSettings.cs — 「设置」页签：快捷键、缩放、字体、目标值、诊断
+// TabSettings.cs — 「设置」页签：快捷键、缩放、字体、奇物表显隐、目标值、诊断
 // =============================================================================
 
 using OneWayTicketsMod.Game;
@@ -52,6 +52,17 @@ namespace OneWayTicketsMod.UI
             }
             Info($"当前字体：{PanelTheme.FontName}");
             Hint("面板缩放用左下角的 － / ＋ 调整，会自动记住。");
+
+            // v0.3.0：安全点左侧那面奇物墙（RelicMgrWindowView）纯展示，关掉不影响奇物生效
+            bool hideRelic = ToggleChip(Plugin.HideRelicWindow.Value, "隐藏安全点的奇物表");
+            if (hideRelic != Plugin.HideRelicWindow.Value)
+            {
+                Plugin.HideRelicWindow.Value = hideRelic;
+                Notify(hideRelic ? "已隐藏：奇物墙不再挡住安全点界面" : "已恢复显示奇物墙", 3.5f);
+            }
+            Info(RelicWindowService.Diagnose());
+            Hint("「奇物表」是进安全点时贴在屏幕边上的那面奇物墙，奇物越多铺得越宽，会把背景和按钮挡住。");
+            Hint("只是把窗口藏起来，奇物本身的效果、数量、存档都不受影响；关掉开关立刻恢复显示。");
             EndCard();
 
             BeginCard("交互");
@@ -76,8 +87,6 @@ namespace OneWayTicketsMod.UI
             GUILayout.BeginHorizontal();
             if (Btn("立即修复", 66f, PanelTheme.Mini, 20f))
                 Notify(CubicleViewService.RepairNow(), 4f);
-            if (Btn("一键上工位", 80f, PanelTheme.Mini, 20f))
-                Notify(CubicleViewService.FillAll(), 5f);
             if (Btn("写诊断到日志", 88f, PanelTheme.Mini, 20f))
                 Notify(CubicleViewService.Dump(), 4f);
             GUILayout.FlexibleSpace();
@@ -86,8 +95,8 @@ namespace OneWayTicketsMod.UI
             Hint("任何一层断了，表现都是「空占位框 / 点上去没反应」。开启后每秒扫一遍，缺哪层补哪层。");
             Hint("「已扫 N 轮」是每秒一次的只读检查（只读 activeSelf / owner，不改任何东西）；");
             Hint("后面括号里的「累计修补 M 项」才是真正改动过的数量，一直是 0 就说明本来就一切正常。");
-            Hint("「一键上工位」走的是和手点格子完全相同的入口：它能把人安排上、手点不行 → 问题在点击层；");
-            Hint("它也安排不上 → 问题在数据层。无论哪种，点「写诊断到日志」后把 LogOutput.log 里 [工位诊断] 的行发我。");
+            Hint("「一键上工位」和「自动补满空工位」已挪到「旅人」页（它安排的是旅人，放在那边更好找）。");
+            Hint("排不上人时点「写诊断到日志」后把 LogOutput.log 里 [工位诊断] 的行发我。");
             EndCard();
 
             BeginCard("诊断");

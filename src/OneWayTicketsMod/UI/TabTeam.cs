@@ -1,17 +1,19 @@
 // =============================================================================
-// TabTeam.cs — 「旅人」页签：旅人不会晕车 + 解除操作中人数上限 + 旅人列表
+// TabTeam.cs — 「旅人」页签：旅人不会晕车 + 解除操作中人数上限 + 工位 + 旅人列表
 //
 // v0.2.5 起去掉了两块：
 //   · 「休息区旅人也能上工位」开关 —— 用户实测完全没效果；
 //   · 「工位分配」卡片（安排 / 撤下 / 一键上工）—— 会把旅人塞进「已经不在车上」的旧设备工位，
 //     而且解除上限后全员都在「操作中」，游戏自己的点选流程就够了，不需要 Mod 再插一手。
-// 现在本页只剩三件事：
+// 现在本页只剩四件事：
 //   1) 旅人不会晕车：给每个旅人补一份游戏自带的「油门焊死」词缀，
 //      该词缀的 EnterTeam 会把 isImmuneToStun 置 true，冲击不再让人进入 Coma（昏迷）。
 //      详见 Game/CharacterGuardService.cs。
 //   2) 解除操作中人数上限：把 CharacterMgr 写死的 6 人上限绕开，整支队伍都待在操作中。
 //      详见 Game/TeamService.cs。
 //   3) 旅人列表：显示操作中 / 休息区、在岗状态、异常状态，可以手动「上阵 / 换下」。
+//   4) 工位卡片（v0.3.0）：把「一键上工位」从「设置」页搬回来 —— 它安排的是旅人，
+//      放在旅人页才找得到；同时新增「自动补满空工位」开关（Game/CubicleViewService.cs）。
 // =============================================================================
 
 using OneWayTicketsMod.Game;
@@ -76,6 +78,25 @@ namespace OneWayTicketsMod.UI
             Hint("游戏把「操作中」写死成 6 人：CharacterMgr.AddCharacter / TakeCharacterToFront 都判 characters.Count < 6。");
             Hint("开启后整支队伍（最多 12 人）都待在操作中，于是游戏自己的「点人头像 → 点工位」对所有人都能生效，不依赖任何补丁。");
             Hint("读档 / 换局后会自动重新拉满；在列表里点「换下」的人会留在休息区，不会被反复拉上来。");
+            EndCard();
+
+            BeginCard("工位（一键上工位 / 自动补位）");
+            GUILayout.BeginHorizontal();
+            if (Btn("一键上工位", 96f, PanelTheme.ButtonPrimary, 22f))
+                Notify(CubicleViewService.FillAll(), 5f);
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+            Hint("把「操作中」里空闲的旅人一次性铺到车上的空工位。走的是和手点格子完全相同的入口，");
+            Hint("只遍历真的装在车上的设备，不会把人塞进已经拆掉的旧设备。");
+
+            bool autoFill = ToggleChip(Plugin.AutoFillCubicle.Value, "自动补满空工位（每 2 秒检查一次）");
+            if (autoFill != Plugin.AutoFillCubicle.Value)
+            {
+                Plugin.AutoFillCubicle.Value = autoFill;
+                Notify(autoFill ? "已开启：空工位会自己补人" : "已关闭：不再自动安排旅人", 3.5f);
+            }
+            Hint("开启后：车上出现空工位、操作中又有空闲旅人，就自动安排上；没有空工位或没有空闲旅人时它什么都不做。");
+            Hint("你正在游戏里手动点选旅人时，自动补位会跳过这一轮，不会把你选好的人抢走。");
             EndCard();
 
             if (!TeamService.Ready)
