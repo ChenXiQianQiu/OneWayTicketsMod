@@ -75,8 +75,15 @@ namespace OneWayTicketsMod.Game
         }
 
         private static float _next;
+
+        /// <summary>最近一轮扫描的统计。</summary>
         private static RepairStats _last;
-        private static int _repairCount;
+
+        /// <summary>扫描轮次（每秒 +1）。注意这是「检查了几遍」，不是「修了几次」。</summary>
+        private static int _scanCount;
+
+        /// <summary>累计真正改动过的项数（补建 / 补绑定 / 补显示 / 藏死格）。</summary>
+        private static int _totalFixed;
 
         public static DeviceMgr Mgr => SingletonAccess.Mgr<DeviceMgr>("DeviceMgr");
 
@@ -99,9 +106,21 @@ namespace OneWayTicketsMod.Game
             var ctx = SingletonAccess.Get<BattleContext>();
             if (ctx != null && !ctx.active_cubicle) ctx.active_cubicle = true;
 
-            _last = RepairAll(mgr);
-            _repairCount++;
+            Scan(mgr);
         }
+
+        /// <summary>扫一轮，并累计「真正改动了几项」。</summary>
+        private static RepairStats Scan(DeviceMgr mgr)
+        {
+            var s = RepairAll(mgr);
+            _last = s;
+            _scanCount++;
+            _totalFixed += FixedOf(s);
+            return s;
+        }
+
+        private static int FixedOf(RepairStats s)
+            => s.CreatedCubicles + s.BoundStations + s.ShownStations + s.HiddenStations;
 
         // ------------------------------------------------------------ 面板按钮
 
@@ -114,11 +133,8 @@ namespace OneWayTicketsMod.Game
             var ctx = SingletonAccess.Get<BattleContext>();
             if (ctx != null) ctx.active_cubicle = true;
 
-            _last = RepairAll(mgr);
-            _repairCount++;
-
-            var s = _last;
-            if (s.CreatedCubicles + s.BoundStations + s.ShownStations == 0)
+            var s = Scan(mgr);
+            if (FixedOf(s) == 0)
                 return $"检查了 {s.Devices} 台设备，格子都正常，没有可修的东西。";
 
             return $"补工位 {s.CreatedCubicles} · 补绑定 {s.BoundStations} · 补显示 {s.ShownStations}"
@@ -432,7 +448,7 @@ namespace OneWayTicketsMod.Game
                 W("装备面板诊断失败：" + ex.Message);
             }
 
-            W($"已执行修复 {_repairCount} 次");
+            W($"已扫描 {_scanCount} 轮（每秒 1 轮，只读检查；累计真正修补 {_totalFixed} 项）");
             W("===== 结束 =====");
 
             var text = sb.ToString().TrimEnd();
@@ -470,7 +486,9 @@ namespace OneWayTicketsMod.Game
             sb.Append(" · 设备 ").Append(CountDevices(mgr)).Append(" 台");
             sb.Append(" · 格子 ").Append(shown).Append('/').Append(total).Append(" 显示");
             sb.Append(" · ").Append(bound).Append(" 个已绑工位");
-            if (_repairCount > 0) sb.Append(" · 已修 ").Append(_repairCount).Append(" 轮");
+            // 明确写「扫描」而不是「修复」：每秒扫一轮是常态，不等于每秒都在改东西
+            if (_scanCount > 0) sb.Append(" · 已扫 ").Append(_scanCount).Append(" 轮");
+            sb.Append(_totalFixed > 0 ? $"（累计修补 {_totalFixed} 项）" : "（一直无需修补）");
             return sb.ToString();
         }
 
