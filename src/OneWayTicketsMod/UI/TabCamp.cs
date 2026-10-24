@@ -39,7 +39,9 @@ namespace OneWayTicketsMod.UI
                 _showAllCoins = showAll;
                 _coinBuf.Clear();
             }
-            GUILayout.FlexibleSpace();
+            // 不用 FlexibleSpace 右对齐：页面外层滚动区的可见宽度比布局宽度窄，
+            // 右对齐的按钮会被裁到看不见（旅人页的「撤下」就是这么消失的）。
+            GUILayout.Space(8f);
             if (Btn("刷新", 46f, PanelTheme.Mini, 20f)) ResetBuffers();
             GUILayout.EndHorizontal();
 

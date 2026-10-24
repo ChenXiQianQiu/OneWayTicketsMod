@@ -2,9 +2,9 @@
 // TabTeam.cs — 「旅人」页签：休息区旅人上工位 + 旅人不会晕车
 //
 // 两件事：
-//   1) 休息区旅人上工位：开关打开后，Cubicle_Helper.SetCubicle 的「是不是自己人」
-//      判定被放宽成「前排 + 后备队」，玩家点选休息区旅人再点工位即可上工。
-//      旅人始终留在后备队列表里，不进前排，所以存档不会写两份。
+//   1) 休息区旅人上工位（v0.2.2 换实现）：开关打开后，点「安排」时会先把这个人
+//      **真的换到前排（操作中）**——前排满 6 人就自动把一个空闲的人换下去——
+//      再走游戏自己的工位落地流程。列表里也可以直接点「上阵 / 换下」手动换人。
 //   2) 旅人不会晕车：给每个旅人补一份游戏自带的「油门焊死」词缀，
 //      该词缀的 EnterTeam 会把 isImmuneToStun 置 true，冲击不再让人进入 Coma（昏迷）。
 //      详见 Game/CharacterGuardService.cs。
@@ -47,15 +47,16 @@ namespace OneWayTicketsMod.UI
             EndCard();
 
             BeginCard("休息区旅人也能上工位");
-            bool on = ToggleChip(Plugin.RestCharacterEnabled.Value, "允许后备队（休息区）的旅人上工位");
+            bool on = ToggleChip(Plugin.RestCharacterEnabled.Value, "休息区的旅人会先换到「操作中」，再上工位");
             if (on != Plugin.RestCharacterEnabled.Value)
             {
                 Plugin.RestCharacterEnabled.Value = on;
                 Notify(on ? "已开启：休息区旅人现在可以安排工位了" : "已关闭", 3.5f);
             }
 
-            Hint("用法：在下面的旅人列表里点「选」挑人，再到「工位分配」里点「安排」。");
-            Hint("旅人始终留在原来的列表里，不进前排，所以读档后不会出现「同一个人两份」。");
+            Hint("游戏只认前排（操作中）旅人，所以本功能会真的把人换到前排，不再只是「挂个名」。");
+            Hint($"用法一：列表里点「选」挑人 → 到「工位分配」点「安排」，会自动换到前排再上工位。");
+            Hint($"用法二：列表里直接点「上阵」把人换到操作中；操作中满 {TeamService.FrontLimit} 人时，会自动把一个空闲的人换到休息区。");
             EndCard();
 
             if (!TeamService.Ready)
@@ -67,8 +68,8 @@ namespace OneWayTicketsMod.UI
             }
 
             BeginCard($"旅人列表（操作中 {TeamService.FrontCount} · 休息区 {TeamService.BackupCount}）");
-            Hint("点右边「选」按钮挑一个人，再到下面的「工位分配」里点「安排」即可上工位。");
-            _teamScroll = BeginList(_teamScroll, 150f);
+            Hint("「上阵」= 换到操作中（能上工位）；「换下」= 回休息区；「选」= 挑他去做下面的工位分配。");
+            _teamScroll = BeginList(_teamScroll, 170f);
             foreach (var entry in TeamService.Collect())
             {
                 GUILayout.BeginHorizontal(PanelTheme.Row, GUILayout.Height(21f));
@@ -78,21 +79,44 @@ namespace OneWayTicketsMod.UI
                 GUILayout.Label(entry.InFront ? "操作中" : "休息区", PanelTheme.Sub, GUILayout.Width(54f));
                 GUI.contentColor = saved;
 
-                GUILayout.Label(entry.Name, PanelTheme.Sub, GUILayout.Width(120f));
+                GUILayout.Label(entry.Name, PanelTheme.Sub, GUILayout.Width(110f));
 
                 GUI.contentColor = entry.Working ? PanelTheme.TxtAccent : PanelTheme.TxtWeak;
                 GUILayout.Label(entry.Working ? "在岗" : "空闲", PanelTheme.Sub, GUILayout.Width(40f));
                 GUI.contentColor = saved;
 
                 GUI.contentColor = entry.StateName == "正常" ? PanelTheme.TxtWeak : PanelTheme.TxtWarn;
-                GUILayout.Label(entry.StateName, PanelTheme.Sub, GUILayout.Width(80f));
+                GUILayout.Label(entry.StateName, PanelTheme.Sub, GUILayout.Width(70f));
                 GUI.contentColor = saved;
 
-                GUILayout.FlexibleSpace();
+                // 注意：这里不能用 FlexibleSpace 把按钮推到右边。
+                // 页面外层是滚动区（ModPanel 的 BeginScrollView 用的是游戏自带的
+                // verticalScrollbar 皮肤，比可见区域宽），行内容一旦按 FlexibleSpace
+                // 撑满就会顶到可见区域外面，按钮点不到（v0.2.1 的「撤下」就是这样消失的）。
+                // 所以按钮紧跟在状态后面左对齐。
+                GUILayout.Space(8f);
 
-                bool picked = entry.Character != null && ReferenceEquals(_assignTarget, entry.Character);
                 if (entry.Character != null)
                 {
+                    // 上阵 / 换下：直接挪列表，走的是游戏自己的 TakeCharacterToFront / ToBackup
+                    if (!entry.InFront)
+                    {
+                        if (Btn("上阵", 40f, PanelTheme.Mini, 18f))
+                        {
+                            bool ok = TeamService.SendToFront(entry.Character, out var msg);
+                            Notify(msg ?? (ok ? "已换到操作中" : "换人失败"), ok ? 3.5f : 4f);
+                        }
+                    }
+                    else
+                    {
+                        if (Btn("换下", 40f, PanelTheme.Mini, 18f))
+                        {
+                            bool ok = TeamService.SendToBackup(entry.Character, out var msg);
+                            Notify(msg ?? (ok ? "已换到休息区" : "换人失败"), ok ? 3.5f : 4f);
+                        }
+                    }
+
+                    bool picked = ReferenceEquals(_assignTarget, entry.Character);
                     if (Btn(picked ? "已选" : "选", 40f, PanelTheme.Mini, 18f))
                         _assignTarget = picked ? null : entry.Character;
                 }
@@ -107,10 +131,9 @@ namespace OneWayTicketsMod.UI
         }
 
         /// <summary>
-        /// 工位分配：绕开游戏的点选判定，直接把选中旅人绑到工位上。
-        /// 游戏原流程（Cubicle_Helper.SetCubicle）只认前排旅人，所以休息区的
-        /// 人在游戏里点工位是没反应的；这里走的是同一套落地逻辑（set_worker /
-        /// SetCharacterWorking / EnterCubicle），只是不做那道前排判定。
+        /// 工位分配：把选中旅人绑到工位上。
+        /// 休息区的人会先被换到前排（操作中），再走游戏的 set_worker /
+        /// SetCharacterWorking / EnterCubicle 落地流程。
         /// </summary>
         private void DrawCubicleAssignCard()
         {
@@ -133,7 +156,7 @@ namespace OneWayTicketsMod.UI
                 return;
             }
 
-            _cubicleScroll = BeginList(_cubicleScroll, 170f);
+            _cubicleScroll = BeginList(_cubicleScroll, 150f);
             foreach (var cubicle in cubicles)
             {
                 if (cubicle == null) continue;
@@ -147,12 +170,13 @@ namespace OneWayTicketsMod.UI
                     PanelTheme.Sub, GUILayout.Width(100f));
                 GUI.contentColor = saved;
 
-                GUILayout.FlexibleSpace();
+                // 同上：不用 FlexibleSpace，按钮紧跟内容，避免被滚动区裁到看不见
+                GUILayout.Space(8f);
 
                 if (Btn("安排", 46f, PanelTheme.Mini, 18f))
                 {
                     bool ok = CubicleService.Assign(_assignTarget, cubicle, out var msg);
-                    Notify(msg ?? (ok ? "已安排" : "安排失败"), ok ? 3f : 4f);
+                    Notify(msg ?? (ok ? "已安排" : "安排失败"), ok ? 3.5f : 4f);
                 }
                 if (Btn("撤下", 46f, PanelTheme.Mini, 18f))
                 {
@@ -164,8 +188,7 @@ namespace OneWayTicketsMod.UI
             }
             EndList();
 
-            Hint("「安排」= 把上面选中的旅人放到这个工位；「撤下」= 让这个工位的人离开。");
-            Hint("休息区旅人同样可以安排，且始终留在休息区列表里，不会写进存档的前排名单。");
+            Hint("「安排」= 把上面选中的旅人放到这个工位（休息区的人会先自动换到操作中）；「撤下」= 让这个工位的人离开。");
             EndCard();
         }
     }

@@ -14,10 +14,13 @@
 // 为什么需要它：
 //   v0.2.0 用 Harmony 改 Character_Helper.GetAllCharacters，无效；
 //   v0.2.1 改成接管 Cubicle_Helper.SetCubicle，实测补丁也完全不执行
-//   （同一套机制的 CaravanMover_Run.do 计数补丁跑了 0 次）。
-//   所以这里不再依赖 Harmony，直接把「把某人放到某工位」做成面板上的按钮：
-//   调用的都是游戏自己的 set_worker / SetCharacterWorking / EnterCubicle，
-//   和玩家点选走的是同一套落地逻辑，只是跳过了「是不是前排」那道判定。
+//   （同一套机制的 CaravanMover_Run.do 计数补丁跑了 0 次）；
+//   v0.2.1 末期的「绕开判定直接 set_worker」在游戏里同样看不到效果
+//   ——人还留在休息区，设备拿不到他的加成，底部 UI 也不会亮「在岗」。
+//   所以 v0.2.2 起改成「先把人换到前排（操作中），再走游戏的落地流程」，
+//   见 TeamService.SendToFront：前排有空位就直接换，满 6 人就把一个空闲的人换下去。
+//   本类负责第二步：清工位 → 登记 character_cubicle → set_worker → SetCharacterWorking → EnterCubicle，
+//   和游戏自己的 Cubicle_Helper.set_cubicle 一模一样。
 // =============================================================================
 
 using System.Collections.Generic;
@@ -64,7 +67,9 @@ namespace OneWayTicketsMod.Game
             return $"工位 {bc.desc.id}";
         }
 
-        /// <summary>把旅人安排到工位。前排 / 休息区都可以。</summary>
+        /// <summary>
+        /// 把旅人安排到工位。休息区的人会先被换到前排（操作中），再上工位。
+        /// </summary>
         public static bool Assign(Character c, BasicCubicle bc, out string message)
         {
             message = null;
@@ -85,6 +90,26 @@ namespace OneWayTicketsMod.Game
             var mgr = TeamService.Mgr;
             if (mgr == null) { message = "读不到旅人管理器。"; return false; }
 
+            // 关键一步：先确保这个人在前排。
+            // 游戏里「能不能上工位」只看 Cubicle_Helper.SetCubicle 那道判定（只认 mgr.characters），
+            // 而设备真正吃到的加成、底部 UI 的「在岗」高亮、存档里的工位归属也都围绕前排旅人，
+            // 所以绕开判定直接 set_worker 是没用的（v0.2.1 实测），必须真的把人换到前排。
+            string frontNote = null;
+            if (!TeamService.IsInFront(c))
+            {
+                if (!TeamService.RestToFrontEnabled)
+                {
+                    message = "这个旅人在休息区。先打开「休息区旅人也能上工位」开关，或在列表里点「上阵」。";
+                    return false;
+                }
+
+                if (!TeamService.SendToFront(c, out frontNote))
+                {
+                    message = frontNote ?? "换到操作中失败。";
+                    return false;
+                }
+            }
+
             try
             {
                 // 目标工位先清空（可能坐着别人）
@@ -102,7 +127,10 @@ namespace OneWayTicketsMod.Game
                 mgr.SetCharacterWorking(c, true);
                 c.EnterCubicle(bc);
 
-                message = $"{TeamService.NameOf(c)} → {NameOf(bc)}";
+                string target = NameOf(bc);
+                message = string.IsNullOrEmpty(frontNote)
+                    ? $"{TeamService.NameOf(c)} → {target}"
+                    : $"{frontNote} → {target}";
                 return true;
             }
             catch (System.Exception ex)

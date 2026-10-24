@@ -21,7 +21,7 @@ namespace OneWayTicketsMod
     {
         public const string Guid = "onewaytickets.resedit";
         public const string PluginName = "再再启程 资源编辑";
-        public const string Version = "0.2.1";
+        public const string Version = "0.2.2";
 
         internal static Plugin Instance { get; private set; }
 
@@ -59,19 +59,19 @@ namespace OneWayTicketsMod
                 new ConfigDescription("「一键满资源」和「满」按钮写入的数值", new AcceptableValueRange<int>(1, 999999999)));
 
             RestCharacterEnabled = Config.Bind("功能", "休息区旅人也能上工位", false,
-                "开启后，后备队（休息区）的旅人也能被选中并拖到工位上工作。改动立即生效，不用重启。");
+                "开启后，休息区（后备队）的旅人也能上工位：安排工位时会先把人换到前排「操作中」，前排满 6 人则自动换下一个空闲的人。改动立即生效，不用重启。");
 
             NoComa = Config.Bind("功能", "旅人不会晕车", false,
                 "开启后给每个旅人补一份「油门焊死」词缀（免疫冲击昏迷），车辆颠簸、设备受击的震动都不再让旅人晕倒。改动立即生效，不用重启。");
 
             DeviceImmune = Config.Bind("功能", "设备免疫异常状态", false,
-                "开启后车上设备不会被点燃 / 机械故障 / 腐蚀 / 缠绕 / 打湿。只免疫异常状态，普通掉血仍然生效。");
+                "开启后车上设备不会被点燃 / 机械故障 / 腐蚀 / 缠绕 / 打湿。做法是每 0.2 秒把设备钉在游戏的「免疫」状态上（游戏判定异常的第一行就是免疫则跳过）。只免疫异常状态，普通掉血仍然生效。");
 
             PanelTheme.Log = msg => Logger.LogInfo(msg);
             PanelTheme.UseSystemFont = UseSystemFont.Value;
             TeamService.RestToFrontEnabled = RestCharacterEnabled.Value;
             CharacterGuardService.SetEnabled(NoComa.Value);
-            DeviceGuardService.ImmuneEnabled = DeviceImmune.Value;
+            DeviceGuardService.SetEnabled(DeviceImmune.Value);
 
             RestCharacterEnabled.SettingChanged += (_, __) =>
             {
@@ -88,7 +88,7 @@ namespace OneWayTicketsMod
 
             DeviceImmune.SettingChanged += (_, __) =>
             {
-                DeviceGuardService.ImmuneEnabled = DeviceImmune.Value;
+                DeviceGuardService.SetEnabled(DeviceImmune.Value);
                 Logger.LogInfo($"设备免疫异常状态：{(DeviceImmune.Value ? "已开启" : "已关闭")}");
             };
 
@@ -139,13 +139,14 @@ namespace OneWayTicketsMod
             _host.Panel = new MainPanel();
             _host.ToggleKey = () => ToggleKey.Value;
             _host.LogError = msg => Logger.LogError(msg);
-            // 每帧常驻逻辑：无限耐久 + 车速峰值记录 + 不晕车词缀同步 + 面板打开时挡住游戏点击。
+            // 每帧常驻逻辑：无限耐久 + 车速峰值记录 + 不晕车词缀同步 + 设备免疫轮询 + 面板打开时挡住游戏点击。
             // 挂在宿主上而不是面板里，这样面板关着也照跑。
             _host.OnTick = () =>
             {
                 WorldService.Tick();
                 CaravanSpeedService.Tick();
                 CharacterGuardService.Tick();
+                DeviceGuardService.Tick();
                 CampCoinService.Tick();
                 UiInputGuard.Sync(_host.Panel != null && _host.Panel.Visible, ClickGuard.Value);
             };
