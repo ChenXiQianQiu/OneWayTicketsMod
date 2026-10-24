@@ -64,19 +64,7 @@ namespace OneWayTicketsMod.Game
         {
             if (c == null) return new CharacterEntry { Name = "(空)", InFront = inFront };
 
-            string name = "旅人";
-            try
-            {
-                if (c.desc != null)
-                {
-                    var localized = Localization_Utility.get_localization(c.desc.name);
-                    if (!string.IsNullOrEmpty(localized)) name = localized;
-                }
-            }
-            catch
-            {
-                // 本地化表未就绪时保留占位名
-            }
+            string name = NameOf(c);
 
             string state = "正常";
             try
@@ -100,6 +88,27 @@ namespace OneWayTicketsMod.Game
                 Working = c.is_working,
                 StateName = state,
             };
+        }
+
+        /// <summary>旅人显示名（本地化名，取不到就用占位名）。</summary>
+        public static string NameOf(Character c)
+        {
+            if (c == null) return "(空)";
+
+            try
+            {
+                if (c.desc != null)
+                {
+                    var localized = Localization_Utility.get_localization(c.desc.name);
+                    if (!string.IsNullOrEmpty(localized)) return localized;
+                }
+            }
+            catch
+            {
+                // 本地化表未就绪时保留占位名
+            }
+
+            return "旅人";
         }
     }
 }

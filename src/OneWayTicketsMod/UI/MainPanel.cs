@@ -8,6 +8,7 @@
 using System.Collections.Generic;
 using OneWayTicketsMod.Game;
 using UnityEngine;
+using World.Characters;
 using static OneWayTicketsMod.UI.PanelWidgets;
 
 namespace OneWayTicketsMod.UI
@@ -20,7 +21,7 @@ namespace OneWayTicketsMod.UI
         protected override int WindowId => 61701;
 
         protected override float DefaultWidth => 740f;
-        protected override float DefaultHeight => 610f;
+        protected override float DefaultHeight => 720f;
         protected override float MinWidth => 600f;
         protected override float MaxWidth => 1100f;
         protected override float MinHeight => 360f;
@@ -42,6 +43,10 @@ namespace OneWayTicketsMod.UI
         private Vector2 _coinScroll;
         private Vector2 _teamScroll;
         private Vector2 _deviceScroll;
+        private Vector2 _cubicleScroll;
+
+        /// <summary>「工位分配」里当前选中的旅人（点旅人列表的「选」按钮设置）。</summary>
+        private Character _assignTarget;
 
         /// <summary>把所有输入框恢复成游戏当前值。</summary>
         private void ResetBuffers()

@@ -2,13 +2,12 @@
 // TabTeam.cs — 「旅人」页签：休息区旅人上工位 + 旅人不会晕车
 //
 // 两件事：
-//   1) 休息区旅人上工位：开关打开后，后备队（休息区）的旅人会被
-//      Character_Helper.GetAllCharacters() 一并返回，于是 Cubicle_Helper.SetCubicle
-//      的前置判断能通过，玩家点选休息区旅人再点工位即可上工。
+//   1) 休息区旅人上工位：开关打开后，Cubicle_Helper.SetCubicle 的「是不是自己人」
+//      判定被放宽成「前排 + 后备队」，玩家点选休息区旅人再点工位即可上工。
 //      旅人始终留在后备队列表里，不进前排，所以存档不会写两份。
-//   2) 旅人不会晕车：Harmony 拦掉 Character.ApplyShockForce，
-//      车辆颠簸 / 设备受击的冲击不再让旅人进入 Coma（昏迷）。
-//      详见 Game/CharacterGuardService.cs 与 Patches/CharacterShockPatch.cs。
+//   2) 旅人不会晕车：给每个旅人补一份游戏自带的「油门焊死」词缀，
+//      该词缀的 EnterTeam 会把 isImmuneToStun 置 true，冲击不再让人进入 Coma（昏迷）。
+//      详见 Game/CharacterGuardService.cs。
 // =============================================================================
 
 using OneWayTicketsMod.Game;
@@ -22,7 +21,7 @@ namespace OneWayTicketsMod.UI
         private void DrawTeamTab()
         {
             BeginCard("旅人不会晕车");
-            bool noComa = ToggleChip(Plugin.NoComa.Value, "免疫冲击昏迷（车再颠也不会晕倒）");
+            bool noComa = ToggleChip(Plugin.NoComa.Value, "给全体旅人补「油门焊死」词缀（免疫冲击昏迷）");
             if (noComa != Plugin.NoComa.Value)
             {
                 Plugin.NoComa.Value = noComa;
@@ -42,9 +41,9 @@ namespace OneWayTicketsMod.UI
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
 
-            Hint("游戏里「状态」显示 Coma 就是昏迷，来源只有一处：车辆纵向加速度超过旅人抗性后按概率触发。");
-            Hint("这个开关会把这个入口整个跳过，所以颠簸、设备受击震动都不会再让人晕倒；关闭后立刻恢复原样。");
-            Hint("「全部唤醒」只清掉当前的昏迷状态，不改旅人属性，也不影响其它状态（如亢奋）。");
+            KV("词缀", CharacterGuardService.Diagnose(), 60f);
+            Hint("做法是给每位旅人补一份游戏自带的「油门焊死」词缀（效果就是免疫冲击昏迷，附带少量车轮牵引力）。");
+            Hint("换人 / 读档后 0.5 秒内自动补齐；关掉开关只撤本 Mod 加的那份，旅人自带的词缀不动。");
             EndCard();
 
             BeginCard("休息区旅人也能上工位");
@@ -52,12 +51,11 @@ namespace OneWayTicketsMod.UI
             if (on != Plugin.RestCharacterEnabled.Value)
             {
                 Plugin.RestCharacterEnabled.Value = on;
-                Notify(on ? "已开启：休息区旅人现在可以点工位了" : "已关闭", 3.5f);
+                Notify(on ? "已开启：休息区旅人现在可以安排工位了" : "已关闭", 3.5f);
             }
 
-            Hint("开启后：先点一下休息区里的旅人（会被高亮选中），再点工位即可上工。");
-            Hint("和 CE 版不同，这里不把人塞进前排列表，因此读档后不会出现「同一个人两份」的问题。");
-            Hint("副作用：需要「全队」判定的逻辑（唤醒 AED、部分增益）也会把休息区旅人算进来，通常更合理。");
+            Hint("用法：在下面的旅人列表里点「选」挑人，再到「工位分配」里点「安排」。");
+            Hint("旅人始终留在原来的列表里，不进前排，所以读档后不会出现「同一个人两份」。");
             EndCard();
 
             if (!TeamService.Ready)
@@ -69,7 +67,8 @@ namespace OneWayTicketsMod.UI
             }
 
             BeginCard($"旅人列表（操作中 {TeamService.FrontCount} · 休息区 {TeamService.BackupCount}）");
-            _teamScroll = BeginList(_teamScroll, 240f);
+            Hint("点右边「选」按钮挑一个人，再到下面的「工位分配」里点「安排」即可上工位。");
+            _teamScroll = BeginList(_teamScroll, 150f);
             foreach (var entry in TeamService.Collect())
             {
                 GUILayout.BeginHorizontal(PanelTheme.Row, GUILayout.Height(21f));
@@ -90,10 +89,83 @@ namespace OneWayTicketsMod.UI
                 GUI.contentColor = saved;
 
                 GUILayout.FlexibleSpace();
+
+                bool picked = entry.Character != null && ReferenceEquals(_assignTarget, entry.Character);
+                if (entry.Character != null)
+                {
+                    if (Btn(picked ? "已选" : "选", 40f, PanelTheme.Mini, 18f))
+                        _assignTarget = picked ? null : entry.Character;
+                }
+
                 GUILayout.EndHorizontal();
             }
             EndList();
-            Hint("「状态」不是「正常」说明该旅人正在昏迷 / 眩晕等，这种状态下点了工位也不会响应。");
+            Hint("「状态」不是「正常」说明该旅人正在昏迷 / 眩晕等，这种状态下安排工位会被拒绝。");
+            EndCard();
+
+            DrawCubicleAssignCard();
+        }
+
+        /// <summary>
+        /// 工位分配：绕开游戏的点选判定，直接把选中旅人绑到工位上。
+        /// 游戏原流程（Cubicle_Helper.SetCubicle）只认前排旅人，所以休息区的
+        /// 人在游戏里点工位是没反应的；这里走的是同一套落地逻辑（set_worker /
+        /// SetCharacterWorking / EnterCubicle），只是不做那道前排判定。
+        /// </summary>
+        private void DrawCubicleAssignCard()
+        {
+            var cubicles = CubicleService.All();
+            BeginCard($"工位分配（共 {cubicles.Count} 个）");
+
+            GUILayout.BeginHorizontal();
+            Caption("已选旅人", 70f);
+            GUILayout.Label(_assignTarget != null ? TeamService.NameOf(_assignTarget) : "未选择（先到上面列表点「选」）",
+                _assignTarget != null ? PanelTheme.Value : PanelTheme.Sub, GUILayout.Width(200f));
+            if (_assignTarget != null && Btn("取消选择", 70f, PanelTheme.Mini, 18f))
+                _assignTarget = null;
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+
+            if (cubicles.Count == 0)
+            {
+                Info("当前场景没有可分配的工位。");
+                EndCard();
+                return;
+            }
+
+            _cubicleScroll = BeginList(_cubicleScroll, 170f);
+            foreach (var cubicle in cubicles)
+            {
+                if (cubicle == null) continue;
+
+                GUILayout.BeginHorizontal(PanelTheme.Row, GUILayout.Height(21f));
+                GUILayout.Label(CubicleService.NameOf(cubicle), PanelTheme.Sub, GUILayout.Width(150f));
+
+                Color saved = GUI.contentColor;
+                GUI.contentColor = cubicle.worker != null ? PanelTheme.TxtAccent : PanelTheme.TxtWeak;
+                GUILayout.Label(cubicle.worker != null ? TeamService.NameOf(cubicle.worker) : "空闲",
+                    PanelTheme.Sub, GUILayout.Width(100f));
+                GUI.contentColor = saved;
+
+                GUILayout.FlexibleSpace();
+
+                if (Btn("安排", 46f, PanelTheme.Mini, 18f))
+                {
+                    bool ok = CubicleService.Assign(_assignTarget, cubicle, out var msg);
+                    Notify(msg ?? (ok ? "已安排" : "安排失败"), ok ? 3f : 4f);
+                }
+                if (Btn("撤下", 46f, PanelTheme.Mini, 18f))
+                {
+                    bool ok = CubicleService.Clear(cubicle, out var msg);
+                    Notify(msg ?? (ok ? "已撤下" : "撤下失败"), 3f);
+                }
+
+                GUILayout.EndHorizontal();
+            }
+            EndList();
+
+            Hint("「安排」= 把上面选中的旅人放到这个工位；「撤下」= 让这个工位的人离开。");
+            Hint("休息区旅人同样可以安排，且始终留在休息区列表里，不会写进存档的前排名单。");
             EndCard();
         }
     }

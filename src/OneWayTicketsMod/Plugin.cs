@@ -21,9 +21,14 @@ namespace OneWayTicketsMod
     {
         public const string Guid = "onewaytickets.resedit";
         public const string PluginName = "再再启程 资源编辑";
-        public const string Version = "0.2.0";
+        public const string Version = "0.2.1";
 
         internal static Plugin Instance { get; private set; }
+
+        /// <summary>给 Game/ 层用的日志出口（BaseUnityPlugin.Logger 是 protected，外部访问不到）。</summary>
+        internal static void LogInfo(string msg) => Instance?.Logger.LogInfo(msg);
+
+        internal static void LogWarn(string msg) => Instance?.Logger.LogWarning(msg);
 
         internal static ConfigEntry<KeyCode> ToggleKey;
         internal static ConfigEntry<float> PanelScale;
@@ -57,7 +62,7 @@ namespace OneWayTicketsMod
                 "开启后，后备队（休息区）的旅人也能被选中并拖到工位上工作。改动立即生效，不用重启。");
 
             NoComa = Config.Bind("功能", "旅人不会晕车", false,
-                "开启后旅人免疫冲击昏迷（车辆颠簸、设备受击的震动都不再让旅人晕倒）。改动立即生效，不用重启。");
+                "开启后给每个旅人补一份「油门焊死」词缀（免疫冲击昏迷），车辆颠簸、设备受击的震动都不再让旅人晕倒。改动立即生效，不用重启。");
 
             DeviceImmune = Config.Bind("功能", "设备免疫异常状态", false,
                 "开启后车上设备不会被点燃 / 机械故障 / 腐蚀 / 缠绕 / 打湿。只免疫异常状态，普通掉血仍然生效。");
@@ -65,7 +70,7 @@ namespace OneWayTicketsMod
             PanelTheme.Log = msg => Logger.LogInfo(msg);
             PanelTheme.UseSystemFont = UseSystemFont.Value;
             TeamService.RestToFrontEnabled = RestCharacterEnabled.Value;
-            CharacterGuardService.NoComaEnabled = NoComa.Value;
+            CharacterGuardService.SetEnabled(NoComa.Value);
             DeviceGuardService.ImmuneEnabled = DeviceImmune.Value;
 
             RestCharacterEnabled.SettingChanged += (_, __) =>
@@ -76,7 +81,8 @@ namespace OneWayTicketsMod
 
             NoComa.SettingChanged += (_, __) =>
             {
-                CharacterGuardService.NoComaEnabled = NoComa.Value;
+                // 走 SetEnabled 而不是直接赋值：切换后要立刻补 / 撤词缀，不能等下一轮轮询
+                CharacterGuardService.SetEnabled(NoComa.Value);
                 Logger.LogInfo($"旅人不会晕车：{(NoComa.Value ? "已开启" : "已关闭")}");
             };
 
@@ -96,7 +102,7 @@ namespace OneWayTicketsMod
 
             // 逐个补丁类单独挂载：某个补丁点因游戏更新失效时，
             // 只影响它自己，不会连带其它功能一起不可用。
-            PatchAll(typeof(CharacterHelperPatch),
+            PatchAll(typeof(CubicleSetPatch),
                      typeof(CharacterShockPatch),
                      typeof(DeviceOutlierPatch),
                      typeof(CaravanSpeedPatch));
@@ -133,12 +139,13 @@ namespace OneWayTicketsMod
             _host.Panel = new MainPanel();
             _host.ToggleKey = () => ToggleKey.Value;
             _host.LogError = msg => Logger.LogError(msg);
-            // 每帧常驻逻辑：无限耐久 + 车速峰值记录 + 面板打开时挡住游戏点击。
+            // 每帧常驻逻辑：无限耐久 + 车速峰值记录 + 不晕车词缀同步 + 面板打开时挡住游戏点击。
             // 挂在宿主上而不是面板里，这样面板关着也照跑。
             _host.OnTick = () =>
             {
                 WorldService.Tick();
                 CaravanSpeedService.Tick();
+                CharacterGuardService.Tick();
                 CampCoinService.Tick();
                 UiInputGuard.Sync(_host.Panel != null && _host.Panel.Visible, ClickGuard.Value);
             };
