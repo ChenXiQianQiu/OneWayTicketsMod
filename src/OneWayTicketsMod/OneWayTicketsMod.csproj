@@ -1,0 +1,92 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    再再启程 One Way Tickets · 资源编辑 Mod
+    目标框架用 netstandard2.1：Unity 2022.3 的 Mono 运行时可以直接加载，
+    而且不需要安装 .NET Framework 4.x 的目标包。
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>10.0</LangVersion>
+    <AssemblyName>OneWayTicketsMod</AssemblyName>
+    <RootNamespace>OneWayTicketsMod</RootNamespace>
+    <Version>0.1.0</Version>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <FileVersion>0.1.0.0</FileVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <DebugType>none</DebugType>
+    <NoWarn>CS0649;CS0169;CS0414</NoWarn>
+  </PropertyGroup>
+
+  <!-- 游戏安装目录：换机器只改这一行 -->
+  <PropertyGroup>
+    <GameDir>H:\Steam\steamapps\common\再再启程 One Way Tickets</GameDir>
+    <ManagedDir>$(GameDir)\再再启程_Data\Managed</ManagedDir>
+    <BepInExCore>$(GameDir)\BepInEx\core</BepInExCore>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="BepInEx">
+      <HintPath>$(BepInExCore)\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(BepInExCore)\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!-- Unity 模块（IMGUI 面板只需要这几个） -->
+    <Reference Include="UnityEngine">
+      <HintPath>$(ManagedDir)\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(ManagedDir)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(ManagedDir)\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(ManagedDir)\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+      <HintPath>$(ManagedDir)\UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.UI">
+      <HintPath>$(ManagedDir)\UnityEngine.UI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+
+    <!-- 游戏程序集 -->
+    <Reference Include="Commons">
+      <HintPath>$(ManagedDir)\Commons.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="World">
+      <HintPath>$(ManagedDir)\World.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Camp">
+      <HintPath>$(ManagedDir)\Camp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Foundations">
+      <HintPath>$(ManagedDir)\Foundations.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AutoCodes">
+      <HintPath>$(ManagedDir)\AutoCodes.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
