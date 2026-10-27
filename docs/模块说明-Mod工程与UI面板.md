@@ -17,7 +17,9 @@
 │   │   ├── TeamService.cs          # 旅人列表 + 解除操作中人数上限
 │   │   ├── CubicleViewService.cs   # 工位格子常显（修进战斗后工位消失）
 │   │   ├── CharacterGuardService.cs# 旅人不会晕车 + 全部唤醒
-│   │   └── DeviceGuardService.cs   # 设备免疫异常 + 清除异常 + 设备列表
+│   │   ├── DeviceGuardService.cs   # 设备免疫异常 + 清除异常 + 设备列表
+│   │   ├── RelicWindowService.cs   # 隐藏安全点的奇物墙
+│   │   └── RelicEditService.cs     # 局内奇物自由增删（v0.5.0）
 │   ├── Patches/                    # 一个补丁只解决一件事（本作不执行，见旅人模块说明第 3 节）
 │   │   ├── CharacterShockPatch.cs  # 旅人不会晕车（ApplyShockForce 前置）
 │   │   ├── DeviceOutlierPatch.cs   # 设备免疫异常（applied_outlier 前置，TargetMethod 反射）
@@ -32,6 +34,7 @@
 │       ├── TabWorld.cs             # 局内页（金币 / 耐久 / 车速）
 │       ├── TabTeam.cs              # 旅人页（不晕车 / 解除操作中上限 / 列表）
 │       ├── TabDevice.cs            # 设备页（免疫异常 / 设备列表）
+│       ├── TabRelic.cs             # 奇物页（v0.5.0：局内自由增删奇物）
 │       └── TabSettings.cs          # 设置页
 ├── docs/                           # 反编译索引 + 各模块说明
 ├── share/Mod修改内容说明.md         # 面向玩家/分享包的功能说明（必须手动维护）
@@ -164,7 +167,7 @@ $P _work/screen_tool.py key 112                     # 112 = VK_F1
 4. `shot ... 0 0 860 680` 截图看面板。
 
 已验证（v0.2.0）：4 个补丁全部挂载成功（见 `BepInEx/LogOutput.log`）、
-面板 6 个页签都能正常渲染、新增的「旅人 / 设备 / 车辆速度」三块卡片布局正确。
+面板 7 个页签都能正常渲染、新增的「旅人 / 设备 / 奇物」三块卡片布局正确。
 「车辆速度」卡片在不进局时会被 `InWorld` 判断挡住，验证时临时把该判断改成 `false`
 截了一张图确认布局，**验证完必须改回来**（别忘了重新编译部署）。
 

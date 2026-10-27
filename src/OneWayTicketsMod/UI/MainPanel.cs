@@ -16,7 +16,7 @@ namespace OneWayTicketsMod.UI
     {
         protected override string Title => $"再再启程 资源编辑 v{Plugin.Version}";
         protected override string TitleNote => "（免费分享，禁止盗卖）";
-        protected override string[] TabLabels => new[] { "概览", "营地资源", "局内", "旅人", "设备", "设置" };
+        protected override string[] TabLabels => new[] { "概览", "营地资源", "局内", "旅人", "设备", "奇物", "设置" };
         protected override int WindowId => 61701;
 
         protected override float DefaultWidth => 740f;
@@ -43,6 +43,9 @@ namespace OneWayTicketsMod.UI
         private Vector2 _teamScroll;
         private Vector2 _partnerScroll;
         private Vector2 _deviceScroll;
+        private Vector2 _relicScroll;
+        private Vector2 _relicOwnedScroll;
+        private string _relicSearch = string.Empty;
 
         /// <summary>把所有输入框恢复成游戏当前值。</summary>
         private void ResetBuffers()
@@ -65,7 +68,8 @@ namespace OneWayTicketsMod.UI
                 case 2: DrawWorldTab(); break;
                 case 3: DrawTeamTab(); break;
                 case 4: DrawDeviceTab(); break;
-                case 5: DrawSettingsTab(); break;
+                case 5: DrawRelicTab(); break;
+                case 6: DrawSettingsTab(); break;
             }
         }
 
@@ -91,10 +95,10 @@ namespace OneWayTicketsMod.UI
             GUILayout.Space(2f);
         }
 
-        private static void StatusChip(string label, string value)
+        private static void StatusChip(string label, string value, float labelWidth = 54f, float valueWidth = 80f)
         {
-            GUILayout.Label(label, PanelTheme.Hint, GUILayout.Width(54f));
-            GUILayout.Label(value, PanelTheme.Sub, GUILayout.Width(80f));
+            GUILayout.Label(label, PanelTheme.Hint, GUILayout.Width(labelWidth));
+            GUILayout.Label(value, PanelTheme.Sub, GUILayout.Width(valueWidth));
         }
 
         /// <summary>
@@ -151,6 +155,7 @@ namespace OneWayTicketsMod.UI
                 : "不在局内", 88f);
             KV("昏迷旅人", TeamService.Ready ? $"{CharacterGuardService.ComaCount()} 人" : "不在局内", 88f);
             KV("异常设备", DeviceGuardService.Ready ? $"{DeviceGuardService.AbnormalCount()} 台" : "不在局内", 88f);
+            KV("本局奇物", RelicEditService.Ready ? RelicEditService.Summary() : "不在局内", 88f);
             EndCard();
         }
 

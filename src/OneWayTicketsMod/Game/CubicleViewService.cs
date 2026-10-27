@@ -271,6 +271,13 @@ namespace OneWayTicketsMod.Game
         /// </summary>
         public static int AutoFill()
         {
+            // ★ v0.4.2 修：Cubicle_Helper.GetSelectCharacter() 内部不判空
+            //   （World.Helpers/Character_Helper.cs 直接 return mgr.select_character），
+            //   而营地 / 主菜单根本没有 CharacterMgr —— 每 2 秒一次空引用刷屏就是这么来的。
+            //   所以先自己确认两个管理器都在，再碰游戏的静态工具类。
+            if (!Ready) return 0;
+            if (SingletonAccess.Mgr<World.Characters.CharacterMgr>("CharacterMgr") == null) return 0;
+
             if (Cubicle_Helper.GetSelectCharacter() != null) return 0;
 
             FillCore(true, out int placed);
@@ -289,12 +296,22 @@ namespace OneWayTicketsMod.Game
             try
             {
                 AutoFill();
+                _lastAutoError = null;
             }
             catch (System.Exception ex)
             {
-                Plugin.LogWarn("自动补位出错：" + ex.Message);
+                // 同一条错误只在第一次记日志：自动补位每 2 秒跑一轮，
+                // 一个稳定的空引用会在 LogOutput.log 里刷出成百上千行，把真正有用的日志淹掉。
+                if (ex.Message != _lastAutoError)
+                {
+                    _lastAutoError = ex.Message;
+                    Plugin.LogWarn("自动补位出错（同类错误之后不再重复记录）：" + ex);
+                }
             }
         }
+
+        /// <summary>上一轮自动补位的错误信息，用于去重刷屏。</summary>
+        private static string _lastAutoError;
 
         /// <summary>
         /// 把前排空闲旅人自动安排到车上的空工位。

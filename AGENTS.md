@@ -31,7 +31,8 @@
 ## 项目概况
 
 - 游戏：**再再启程 One Way Tickets**（Steam 单机），Unity 2022.3.17f1c1，**Mono 后端**（非 IL2CPP）。
-- 游戏目录：`H:\Steam\steamapps\common\再再启程 One Way Tickets`
+- 游戏目录：`H:\Steam\steamapps\common\Onewaytickets`（2026-10-27 更新后文件夹由中文名改为英文名，
+  Data 目录也随之变成 `One Way Tickets_Data`；Steam appid 4817620）
 - Mod 加载器：BepInEx 5.4.21.0 x64（Mono 版，已安装在游戏目录；本地安装包在 `E:\project\.tools\Unity\Modding\BepInEx\BepInEx_x64_5.4.21.0`）。
 - 当前只有一个 Mod：`src/OneWayTicketsMod`（再再启程 资源编辑），版本见 `src/OneWayTicketsMod/version.txt`。
 - 历史产物：`再再启程 资源编辑表.CT` 是 Cheat Engine 表，已被 Mod 取代，仅留档；
@@ -63,10 +64,10 @@ Decompiled/                反编译产物，不入库
 cd src/OneWayTicketsMod
 dotnet build -v q
 cp bin/Debug/OneWayTicketsMod.dll \
-   "H:/Steam/steamapps/common/再再启程 One Way Tickets/BepInEx/plugins/OneWayTicketsMod/"
+   "H:/Steam/steamapps/common/Onewaytickets/BepInEx/plugins/OneWayTicketsMod/"
 ```
 
-运行日志：`H:\Steam\steamapps\common\再再启程 One Way Tickets\BepInEx\LogOutput.log`
+运行日志：`H:\Steam\steamapps\common\Onewaytickets\BepInEx\LogOutput.log`
 
 打分享包（发给别人用，产物在 `dist/`，不入库）：
 
@@ -79,7 +80,7 @@ bash scripts/package.sh
 重新反编译（需要时）：
 
 ```bash
-M="H:/Steam/steamapps/common/再再启程 One Way Tickets/再再启程_Data/Managed"
+M="H:/Steam/steamapps/common/Onewaytickets/One Way Tickets_Data/Managed"
 for dll in Commons Camp World Foundations AutoCodes Assembly-CSharp Init; do
   ilspycmd -p -o "Decompiled/$dll" "$M/$dll.dll"
 done
